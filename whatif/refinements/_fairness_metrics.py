@@ -1,7 +1,7 @@
 import numpy as np
 
-from arguseyes.refinements import Refinement
-from arguseyes.templates import SourceType, Output
+from whatif.refinements import Refinement
+from whatif.templates import SourceType, Output
 
 
 class FairnessMetrics(Refinement):

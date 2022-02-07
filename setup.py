@@ -7,10 +7,10 @@ with open(os.path.join(ROOT, "requirements.txt")) as f:
     required = f.read().splitlines()
 
 setup(
-    name="arguseyes",
+    name="deem-experiments",
     version="0.0.1.dev0",
-    author='Sebastian Schelter',
-    author_email='s[DOT]schelter[AT]uva[DOT]nl',
+    author='Stefan Grafberger',
+    author_email='s[DOT]grafberger[AT]uva[DOT]nl',
     long_description_content_type="text/markdown",
     packages=find_packages(),
     include_package_data=True,

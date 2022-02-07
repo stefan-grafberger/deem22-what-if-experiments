@@ -1,8 +1,8 @@
 import numpy as np
 from numba import njit, prange
 
-from arguseyes.refinements import Refinement
-from arguseyes.templates import SourceType, Source, Output
+from whatif.refinements import Refinement
+from whatif.templates import SourceType, Source, Output
 
 # removed cache=True because of https://github.com/numba/numba/issues/4908 need a workaround soon
 @njit(fastmath=True, parallel=True)
@@ -71,10 +71,10 @@ class DataValuation(Refinement):
             data.at[row_index, '__arguseyes__shapley_value'] = \
                 self._find_shapley(fact_table_lineage[row_index], shapley_values_by_row_id)
 
-        self.log_tag('arguseyes.data_valuation.operator_id', fact_table_source.operator_id)
-        self.log_tag('arguseyes.data_valuation.k', self.k)
-        self.log_tag('arguseyes.data_valuation.num_test_samples', self.num_test_samples)
-        self.log_tag('arguseyes.data_valuation.data_file', 'input-with-shapley-values.parquet')
+        self.log_tag('whatif.data_valuation.operator_id', fact_table_source.operator_id)
+        self.log_tag('whatif.data_valuation.k', self.k)
+        self.log_tag('whatif.data_valuation.num_test_samples', self.num_test_samples)
+        self.log_tag('whatif.data_valuation.data_file', 'input-with-shapley-values.parquet')
         self.log_as_parquet_file(data, 'input-with-shapley-values.parquet')
 
         return Source(fact_table_source.operator_id, fact_table_source.source_type, data)
