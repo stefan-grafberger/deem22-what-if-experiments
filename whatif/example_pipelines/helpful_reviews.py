@@ -24,14 +24,10 @@ def execute_review_pipeline():
     if len(sys.argv) > 3:
         start_date = sys.argv[3]
 
-    reviews = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/reviews.csv.gz',
-                          compression='gzip', index_col=0)
-    products = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/products.csv',
-                           index_col=0)
-    categories = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/categories.csv',
-                             index_col=0)
-    ratings = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/ratings.csv',
-                          index_col=0)
+    reviews = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/reviews.csv.gz', compression='gzip', index_col=0)
+    products = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/products.csv', index_col=0)
+    categories = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/categories.csv', index_col=0)
+    ratings = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/amazon-reviews/ratings.csv', index_col=0)
 
     reviews = reviews[reviews.verified_purchase == 'Y']
     reviews = reviews[reviews.marketplace == 'US']
@@ -59,12 +55,11 @@ def execute_review_pipeline():
         reviews_with_products_and_ratings.review_body
 
     train_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date <= split_date]
-    test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date]
-
     train_data['is_helpful'] = train_data['helpful_votes'] > 0
-    test_data['is_helpful'] = test_data['helpful_votes'] > 0
-
     train_labels = label_binarize(train_data['is_helpful'], classes=[True, False])
+
+    test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date]
+    test_data['is_helpful'] = test_data['helpful_votes'] > 0
     test_labels = label_binarize(test_data['is_helpful'], classes=[True, False])
 
     numerical_attributes = ['star_rating']

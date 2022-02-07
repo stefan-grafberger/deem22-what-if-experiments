@@ -10,7 +10,7 @@ from sklearn.compose import ColumnTransformer
 from whatif.utils.utils import get_project_root
 
 
-def execute_income_pipeline():
+def execute_credit_pipeline():
     def load_train_and_test_data(adult_train_location, adult_test_location, excluded_employment_types):
 
         columns = ['age', 'workclass', 'fnlwgt', 'education', 'education-num', 'marital-status', 'occupation',

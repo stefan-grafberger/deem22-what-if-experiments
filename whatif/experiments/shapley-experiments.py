@@ -1,3 +1,3 @@
-from whatif.example_pipelines.sneakers import execute_sneaker_pipeline
+from whatif.example_pipelines.product_images import execute_image_pipeline
 
-execute_sneaker_pipeline()
+execute_image_pipeline()

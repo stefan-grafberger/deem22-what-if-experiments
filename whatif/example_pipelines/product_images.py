@@ -13,16 +13,14 @@ from sklearn.pipeline import Pipeline
 from whatif.utils.utils import get_project_root
 
 
-def execute_sneaker_pipeline():
+def execute_image_pipeline():
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
-    train_data = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv',
-                             converters={'image': decode_image})
+    train_data = pd.read_csv( f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv', converters={'image': decode_image})
 
-    product_categories = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/'
-                                     f'product_categories.csv')
+    product_categories = pd.read_csv( f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
     with_categories = train_data.merge(product_categories, on='category_id')
 
     categories_to_distinguish = ['Sneaker', 'Ankle boot']
