@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import FunctionTransformer, label_binarize
 from sklearn.pipeline import Pipeline
 
+from whatif.refinements import _data_valuation
 from whatif.utils.utils import get_project_root
 
 
@@ -77,5 +78,12 @@ def execute_image_pipeline_w_shapley():
 
     x_test = pipeline_without_model.transform(test[['image']])
     print(model_without_pipeline.score(x_test, y_test))
+
+    print("Shapley values")
+    shapley_values = _data_valuation._compute_shapley_values(x_train,
+                                                             np.squeeze(y_train),
+                                                             x_test,
+                                                             np.squeeze(y_test))
+    print(shapley_values)
 
 execute_image_pipeline_w_shapley()

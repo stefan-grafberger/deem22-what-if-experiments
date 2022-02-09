@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit, prange
 
-from whatif.refinements import Refinement
+from whatif.refinements._refinement import Refinement
 from whatif.templates import SourceType, Source, Output
 
 # removed cache=True because of https://github.com/numba/numba/issues/4908 need a workaround soon
