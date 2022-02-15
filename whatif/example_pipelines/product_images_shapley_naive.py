@@ -120,36 +120,43 @@ def execute_image_pipeline_w_shapley(corrupted_id_set, label_corrections: pd.Dat
     label_corrections = {}  # TODO
 
 def create_corrupt_data():
-    def decode_image(img_str):
-        return np.array([int(val) for val in img_str.split(':')])
-
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
     train_data = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv')
     # We need some way to identify fact table rows throughout the pipeline and across runs
-    train_data['image_lineage_id'] = range(0, len(train_data))
+    train_data = train_data.reset_index(drop=False)
+    train_data = train_data.rename(columns={'index': 'image_lineage_id'})
 
     product_categories = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
+
     # Binary classification, let us assume we have label mapping always, but think about this again
     # train_data['category_lineage_id'] = range(0, len(train_data))
     with_categories = train_data.merge(product_categories, on='category_id')
-
     categories_to_distinguish = ['Sneaker', 'Ankle boot']
-
     images_of_interest = with_categories[with_categories['category_name'].isin(categories_to_distinguish)]
     rows_to_corrupt = images_of_interest.sample(frac=0.5, replace=False)
-    rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Sneaker', 'category_id'] = int(9)
-    rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Ankle boot', 'category_id'] = int(7)
-    rows_to_corrupt['category_id'] = rows_to_corrupt['category_id'].astype(int)  # TODO, not working yet
+    rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Sneaker', 'category_id'] = 9
+    rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Ankle boot', 'category_id'] = 7
 
     # apply corruption
-    images_of_interest.update(rows_to_corrupt)
+    train_data.image = train_data.image.astype(str)
+    rows_to_corrupt.image = rows_to_corrupt.image.astype(str)
+    train_data.category_id = train_data.category_id.astype(int)
+    rows_to_corrupt.category_id = rows_to_corrupt.category_id.astype(int)
+    corrupted_train_data = train_data.merge(rows_to_corrupt, how='left', on='image_lineage_id', indicator=True)
+    corrupted_train_data.loc[:, 'image'] = corrupted_train_data.loc[:, 'image_x']
+    corrupted_train_data.loc[corrupted_train_data['_merge'] == 'left_only', 'category_id'] = corrupted_train_data.loc[corrupted_train_data['_merge'] == 'left_only', 'category_id_x']
+    corrupted_train_data.loc[corrupted_train_data['_merge'] != 'left_only', 'category_id'] = corrupted_train_data.loc[corrupted_train_data['_merge'] != 'left_only', 'category_id_y']
+    corrupted_train_data.set_index('image_lineage_id')
+    corrupted_train_data = corrupted_train_data.sort_index()
+    corrupted_train_data['category_id'] = corrupted_train_data['category_id'].astype(int)
     # print(rows_to_corrupt)
-    df_to_save = images_of_interest[['image', 'category_id']]
+    df_to_save = corrupted_train_data[['image', 'category_id']]
     df_to_save.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
                       f'sneakers/product_images_corrupted.csv', index=False)
     corrupted_row_ids = rows_to_corrupt[['image_lineage_id']]
+    corrupted_row_ids = corrupted_row_ids.sort_index()
     corrupted_row_ids.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
                              f'sneakers/product_image_ids_corrupted.csv', index=False)
     return corrupted_row_ids
