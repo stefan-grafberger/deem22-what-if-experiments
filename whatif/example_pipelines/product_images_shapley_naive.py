@@ -19,11 +19,13 @@ def execute_image_pipeline_w_shapley():
         return np.array([int(val) for val in img_str.split(':')])
 
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
-    train_data = pd.read_csv( f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv', converters={'image': decode_image})
+    train_data = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv',
+                             converters={'image': decode_image})
     # We need some way to identify fact table rows throughout the pipeline and across runs
     train_data['image_lineage_id'] = range(0, len(train_data))
 
-    product_categories = pd.read_csv( f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
+    product_categories = pd.read_csv(
+        f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
     # Binary classification, let us assume we have label mapping always, but think about this again
     # train_data['category_lineage_id'] = range(0, len(train_data))
     with_categories = train_data.merge(product_categories, on='category_id')
@@ -32,15 +34,12 @@ def execute_image_pipeline_w_shapley():
 
     images_of_interest = with_categories[with_categories['category_name'].isin(categories_to_distinguish)]
 
-
     def normalise_image(images):
         return images / 255.0
-
 
     def reshape_images(images):
         return np.concatenate(images['image'].values) \
             .reshape(images.shape[0], 28, 28, 1)
-
 
     def create_cnn():
         model = Sequential([
@@ -59,7 +58,6 @@ def execute_image_pipeline_w_shapley():
         model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
         return model
-
 
     pipeline_without_model = Pipeline(steps=[
         ('normalisation', FunctionTransformer(normalise_image)),
@@ -89,8 +87,10 @@ def execute_image_pipeline_w_shapley():
     shapley_values = _data_valuation._compute_shapley_values(x_train,
                                                              np.squeeze(y_train),
                                                              x_test,
-                                                             np.squeeze(y_test))
-    df_with_id_and_shapley_value = pd.DataFrame({"lineage_image_id": image_lineage_ids, "shapley_value": shapley_values})
+                                                             np.squeeze(y_test),
+                                                             10)
+    df_with_id_and_shapley_value = pd.DataFrame(
+        {"lineage_image_id": image_lineage_ids, "shapley_value": shapley_values})
     rows_to_fix = df_with_id_and_shapley_value.nsmallest(50, "shapley_value")
     joined_rows_to_fix = train.merge(rows_to_fix, left_index=True, right_on="lineage_image_id")
     for row_index, row in list(joined_rows_to_fix.iterrows())[0:3]:
@@ -102,4 +102,43 @@ def execute_image_pipeline_w_shapley():
     print(rows_to_fix)
     label_corrections = {}  # TODO
 
-execute_image_pipeline_w_shapley()
+
+# execute_image_pipeline_w_shapley()
+
+def create_corrupt_data():
+    def decode_image(img_str):
+        return np.array([int(val) for val in img_str.split(':')])
+
+    # TODO change this to pyarrow + parquet, which can handle numpy arrays well
+    train_data = pd.read_csv(
+        f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv')
+    # We need some way to identify fact table rows throughout the pipeline and across runs
+    train_data['image_lineage_id'] = range(0, len(train_data))
+
+    product_categories = pd.read_csv(
+        f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
+    # Binary classification, let us assume we have label mapping always, but think about this again
+    # train_data['category_lineage_id'] = range(0, len(train_data))
+    with_categories = train_data.merge(product_categories, on='category_id')
+
+    categories_to_distinguish = ['Sneaker', 'Ankle boot']
+
+    images_of_interest = with_categories[with_categories['category_name'].isin(categories_to_distinguish)]
+    rows_to_corrupt = images_of_interest.sample(frac=0.5, replace=False)
+    rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Sneaker', 'category_id'] = int(9)
+    rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Ankle boot', 'category_id'] = int(7)
+    rows_to_corrupt['category_id'] = rows_to_corrupt['category_id'].astype(int)  # TODO, not working yet
+
+    # apply corruption
+    images_of_interest.update(rows_to_corrupt)
+    print(rows_to_corrupt)
+    df_to_save = images_of_interest[['image', 'category_id']]
+    df_to_save.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
+                      f'sneakers/product_images_corrupted.csv', index=False)
+    corrupted_row_ids = rows_to_corrupt[['image_lineage_id']]
+    corrupted_row_ids.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
+                             f'sneakers/product_image_ids_corrupted.csv', index=False)
+    # TODO: Save corruption dict
+
+
+create_corrupt_data()
