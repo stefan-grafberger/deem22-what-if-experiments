@@ -14,7 +14,7 @@ from whatif.refinements import _data_valuation
 from whatif.utils.utils import get_project_root
 
 
-def execute_image_pipeline_w_shapley(corrupted_id_set, label_corrections: pd.DataFrame, total_updates):
+def execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections: pd.DataFrame, total_updates):
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
@@ -27,7 +27,8 @@ def execute_image_pipeline_w_shapley(corrupted_id_set, label_corrections: pd.Dat
     train_data.set_index("image_lineage_id")
 
     # Apply label corrections
-    train_data.update(label_corrections)
+    # TODO
+    # train_data.update(label_corrections)
 
     product_categories = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
@@ -95,9 +96,9 @@ def execute_image_pipeline_w_shapley(corrupted_id_set, label_corrections: pd.Dat
                                                              np.squeeze(y_test),
                                                              10)
     df_with_id_and_shapley_value = pd.DataFrame(
-        {"lineage_image_id": image_lineage_ids, "shapley_value": shapley_values})
+        {"image_lineage_id": image_lineage_ids, "shapley_value": shapley_values})
     rows_to_fix = df_with_id_and_shapley_value.nsmallest(50, "shapley_value")
-    joined_rows_to_fix = train.merge(rows_to_fix, left_index=True, right_on="lineage_image_id")
+    joined_rows_to_fix = train.merge(rows_to_fix, on="image_lineage_id")
     # Show problematic imgs with labels
     # for row_index, row in list(joined_rows_to_fix.iterrows())[0:3]:
     #     from matplotlib import pyplot as plt
@@ -106,18 +107,25 @@ def execute_image_pipeline_w_shapley(corrupted_id_set, label_corrections: pd.Dat
     #     plt.show()
     # print(rows_to_fix)
     # fix labels:
-    corrections_and_corrupted = joined_rows_to_fix.merge(corrupted_row_ids, how='outer', left_on="lineage_image_id", right_index=True, indicator=True)
-    corrections_and_corrupted = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'left_only']
-    print(corrections_and_corrupted['category_id'])
-    wrongly_detect_shapley_rows = corrections_and_corrupted['category_id'].isna().sum()
-    print(f"Detected {wrongly_detect_shapley_rows}# rows that were not corrupted in iteration")
-    correctly_detect_shapley_rows = corrections_and_corrupted['category_id'].notna().sum()
-    print(f"Detected {correctly_detect_shapley_rows}# rows that were corrupted in iteration")
-    joined_rows_to_fix.set_index("lineage_image_id")
-    print(corrections_and_corrupted[["lineage_image_id"]])
+    print(f"Already cleaned rows: {len(label_corrections)}#")
+    print(f"Total corrupted rows: {len(corrupted_row_ids)}#")
+    corrupted_row_ids.image_lineage_id = corrupted_row_ids.image_lineage_id.astype(int)
+    corrections_and_corrupted = joined_rows_to_fix.merge(corrupted_row_ids, how='outer', on="image_lineage_id", indicator=True)
+    # Rows to fix that were not corrupted
+    false_corruption_alarm = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'left_only'])
+    print(f"False alarm for {false_corruption_alarm}# rows that were not corrupted")
+    correct_corruption_alarm = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both'])
+    print(f"Correctly detected {correct_corruption_alarm}# rows that were corrupted in iteration")
+    corruption_not_detected_yet = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'right_only'])
+    print(f"Did not yet detect {corruption_not_detected_yet}# rows that were corrupted in iteration")
     # TODO: Compute percentage, update label corrections
 
+    total_updates += correct_corruption_alarm
+    fraction_data_cleaned = total_updates / len(corrupted_row_ids)
+    print(f"Fraction of cleaned data: {fraction_data_cleaned}")
+
     label_corrections = {}  # TODO
+
 
 def create_corrupt_data():
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
@@ -140,21 +148,20 @@ def create_corrupt_data():
     rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Ankle boot', 'category_id'] = 7
 
     # apply corruption
-    train_data.image = train_data.image.astype(str)
-    rows_to_corrupt.image = rows_to_corrupt.image.astype(str)
-    train_data.category_id = train_data.category_id.astype(int)
-    rows_to_corrupt.category_id = rows_to_corrupt.category_id.astype(int)
     corrupted_train_data = train_data.merge(rows_to_corrupt, how='left', on='image_lineage_id', indicator=True)
     corrupted_train_data.loc[:, 'image'] = corrupted_train_data.loc[:, 'image_x']
-    corrupted_train_data.loc[corrupted_train_data['_merge'] == 'left_only', 'category_id'] = corrupted_train_data.loc[corrupted_train_data['_merge'] == 'left_only', 'category_id_x']
-    corrupted_train_data.loc[corrupted_train_data['_merge'] != 'left_only', 'category_id'] = corrupted_train_data.loc[corrupted_train_data['_merge'] != 'left_only', 'category_id_y']
+    corrupted_train_data.loc[corrupted_train_data['_merge'] == 'left_only', 'category_id'] = corrupted_train_data.loc[
+        corrupted_train_data['_merge'] == 'left_only', 'category_id_x']
+    corrupted_train_data.loc[corrupted_train_data['_merge'] != 'left_only', 'category_id'] = corrupted_train_data.loc[
+        corrupted_train_data['_merge'] != 'left_only', 'category_id_y']
     corrupted_train_data.set_index('image_lineage_id')
     corrupted_train_data = corrupted_train_data.sort_index()
     corrupted_train_data['category_id'] = corrupted_train_data['category_id'].astype(int)
-    # print(rows_to_corrupt)
-    df_to_save = corrupted_train_data[['image', 'category_id']]
-    df_to_save.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
-                      f'sneakers/product_images_corrupted.csv', index=False)
+
+    corrupted_df_to_save = corrupted_train_data[['image', 'category_id']]
+    corrupted_df_to_save.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
+                                f'sneakers/product_images_corrupted.csv', index=False)
+
     corrupted_row_ids = rows_to_corrupt[['image_lineage_id']]
     corrupted_row_ids = corrupted_row_ids.sort_index()
     corrupted_row_ids.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
@@ -163,5 +170,5 @@ def create_corrupt_data():
 
 
 corrupted_row_ids = create_corrupt_data()
-label_corrections = pd.DataFrame({"category_id": []})
+label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
 execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections, 0)
