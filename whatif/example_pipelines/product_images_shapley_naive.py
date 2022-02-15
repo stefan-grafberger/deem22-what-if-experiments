@@ -14,15 +14,20 @@ from whatif.refinements import _data_valuation
 from whatif.utils.utils import get_project_root
 
 
-def execute_image_pipeline_w_shapley():
+def execute_image_pipeline_w_shapley(corrupted_id_set, label_corrections: pd.DataFrame, total_updates):
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
-    train_data = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv',
+    train_data = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/'
+                             f'product_images_corrupted.csv',
                              converters={'image': decode_image})
     # We need some way to identify fact table rows throughout the pipeline and across runs
     train_data['image_lineage_id'] = range(0, len(train_data))
+    train_data.set_index("image_lineage_id")
+
+    # Apply label corrections
+    train_data.update(label_corrections)
 
     product_categories = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
@@ -76,7 +81,7 @@ def execute_image_pipeline_w_shapley():
     y_test = label_binarize(test['category_name'], classes=categories_to_distinguish)
 
     # Let us record the fact table identifiers so we can build the label corrections map
-    image_lineage_ids = train['image_lineage_id']
+    image_lineage_ids = train["image_lineage_id"]
     x_train = pipeline_without_model.fit_transform(train[['image']])
     model_without_pipeline.fit(x_train, y_train)
 
@@ -93,17 +98,26 @@ def execute_image_pipeline_w_shapley():
         {"lineage_image_id": image_lineage_ids, "shapley_value": shapley_values})
     rows_to_fix = df_with_id_and_shapley_value.nsmallest(50, "shapley_value")
     joined_rows_to_fix = train.merge(rows_to_fix, left_index=True, right_on="lineage_image_id")
-    for row_index, row in list(joined_rows_to_fix.iterrows())[0:3]:
-        from matplotlib import pyplot as plt
-        print(f"""row["category_name"]: {row["category_name"]}""")
-        plt.imshow(np.reshape(row["image"], (28, 28, 1)), interpolation='nearest')
-        plt.show()
+    # Show problematic imgs with labels
+    # for row_index, row in list(joined_rows_to_fix.iterrows())[0:3]:
+    #     from matplotlib import pyplot as plt
+    #     print(f"""row["category_name"]: {row["category_name"]}""")
+    #     plt.imshow(np.reshape(row["image"], (28, 28, 1)), interpolation='nearest')
+    #     plt.show()
+    # print(rows_to_fix)
+    # fix labels:
+    corrections_and_corrupted = joined_rows_to_fix.merge(corrupted_row_ids, how='outer', left_on="lineage_image_id", right_index=True, indicator=True)
+    corrections_and_corrupted = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'left_only']
+    print(corrections_and_corrupted['category_id'])
+    wrongly_detect_shapley_rows = corrections_and_corrupted['category_id'].isna().sum()
+    print(f"Detected {wrongly_detect_shapley_rows}# rows that were not corrupted in iteration")
+    correctly_detect_shapley_rows = corrections_and_corrupted['category_id'].notna().sum()
+    print(f"Detected {correctly_detect_shapley_rows}# rows that were corrupted in iteration")
+    joined_rows_to_fix.set_index("lineage_image_id")
+    print(corrections_and_corrupted[["lineage_image_id"]])
+    # TODO: Compute percentage, update label corrections
 
-    print(rows_to_fix)
     label_corrections = {}  # TODO
-
-
-# execute_image_pipeline_w_shapley()
 
 def create_corrupt_data():
     def decode_image(img_str):
@@ -131,14 +145,16 @@ def create_corrupt_data():
 
     # apply corruption
     images_of_interest.update(rows_to_corrupt)
-    print(rows_to_corrupt)
+    # print(rows_to_corrupt)
     df_to_save = images_of_interest[['image', 'category_id']]
     df_to_save.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
                       f'sneakers/product_images_corrupted.csv', index=False)
     corrupted_row_ids = rows_to_corrupt[['image_lineage_id']]
     corrupted_row_ids.to_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/'
                              f'sneakers/product_image_ids_corrupted.csv', index=False)
-    # TODO: Save corruption dict
+    return corrupted_row_ids
 
 
-create_corrupt_data()
+corrupted_row_ids = create_corrupt_data()
+label_corrections = pd.DataFrame({"category_id": []})
+execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections, 0)
