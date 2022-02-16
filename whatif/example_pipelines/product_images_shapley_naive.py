@@ -3,7 +3,6 @@ from inspect import cleandoc
 
 import numpy as np
 import pandas as pd
-import sys
 
 from tensorflow.python.keras.wrappers.scikit_learn import KerasClassifier
 from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Dropout, Flatten
@@ -17,9 +16,9 @@ from whatif.refinements import _data_valuation
 from whatif.utils.utils import get_project_root
 
 
-def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corrections: pd.DataFrame,
-                                     total_updates: int, shapley_value_cleaning=True, shapley_value_k=10,
-                                     cleaning_batch_size=50):
+def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, label_corrections: pd.DataFrame,
+                                           total_updates: int, shapley_value_cleaning=True, shapley_value_k=10,
+                                           cleaning_batch_size=50):
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
@@ -28,9 +27,9 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corr
                              f'product_images_corrupted.csv',
                              converters={'image': decode_image})
 
-    enable_fact_table_row_tracking(train_data)
+    enable_fact_table_row_tracking_naive(train_data)
 
-    train_data = apply_label_corrections_to_train_data(label_corrections, train_data)
+    train_data = apply_label_corrections_to_train_data_naive(label_corrections, train_data)
 
     product_categories = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
@@ -83,7 +82,7 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corr
     y_train = label_binarize(train['category_name'], classes=categories_to_distinguish)
     y_test = label_binarize(test['category_name'], classes=categories_to_distinguish)
 
-    image_lineage_ids = save_row_tracking_information(train)
+    image_lineage_ids = save_row_tracking_information_naive(train)
 
     x_train = pipeline_without_model.fit_transform(train[['image']])
     model_without_pipeline.fit(x_train, y_train)
@@ -93,21 +92,22 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corr
     # Disable printing for the experiments to not spam the console
     # print(model_score)
 
-    cleaning_results = do_shapley_value_cleaning(corrupted_row_ids, image_lineage_ids, label_corrections,
-                                                 shapley_value_cleaning, total_updates, train, x_test, x_train, y_test,
-                                                 y_train, shapley_value_k, cleaning_batch_size)
+    cleaning_results = do_shapley_value_cleaning_naive(corrupted_row_ids, image_lineage_ids, label_corrections,
+                                                       shapley_value_cleaning, total_updates, train, x_test, x_train,
+                                                       y_test,
+                                                       y_train, shapley_value_k, cleaning_batch_size)
     label_corrections, total_updates, iteration_info = cleaning_results
     iteration_info['model_score'] = model_score
     return cleaning_results
 
 
-def save_row_tracking_information(train):
+def save_row_tracking_information_naive(train):
     # Let us record the fact table identifiers so we can build the label corrections map
     image_lineage_ids = train["image_lineage_id"]
     return image_lineage_ids
 
 
-def apply_label_corrections_to_train_data(label_corrections, train_data):
+def apply_label_corrections_to_train_data_naive(label_corrections, train_data):
     # Apply label corrections
     train_data = train_data.merge(label_corrections, how='left', on='image_lineage_id', indicator=True)
     train_data.loc[train_data['_merge'] == 'left_only', 'category_id'] = train_data.loc[
@@ -121,14 +121,14 @@ def apply_label_corrections_to_train_data(label_corrections, train_data):
     return train_data
 
 
-def enable_fact_table_row_tracking(train_data):
+def enable_fact_table_row_tracking_naive(train_data):
     # We need some way to identify fact table rows throughout the pipeline and across runs
     train_data['image_lineage_id'] = range(0, len(train_data))
 
 
-def do_shapley_value_cleaning(corrupted_row_ids, image_lineage_ids, label_corrections, shapley_value_cleaning,
-                              total_updates, train, x_test, x_train, y_test, y_train, shapley_value_k,
-                              cleaning_batch_size):
+def do_shapley_value_cleaning_naive(corrupted_row_ids, image_lineage_ids, label_corrections, shapley_value_cleaning,
+                                    total_updates, train, x_test, x_train, y_test, y_train, shapley_value_k,
+                                    cleaning_batch_size):
     iteration_info = {}
     shapley_values = _data_valuation._compute_shapley_values(x_train,
                                                              np.squeeze(y_train),
@@ -245,12 +245,12 @@ def do_shapley_value_naive(corruption_fraction, num_iterations, use_shapley_weig
     }
     for iteration in range(num_iterations):
         print(f"Starting iteration {iteration} now...")
-        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley(corrupted_row_ids,
-                                                                                            label_corrections,
-                                                                                            total_updates,
-                                                                                            use_shapley_weighting,
-                                                                                            shapley_value_k,
-                                                                                            cleaning_batch_size)
+        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_naive(corrupted_row_ids,
+                                                                                                  label_corrections,
+                                                                                                  total_updates,
+                                                                                                  use_shapley_weighting,
+                                                                                                  shapley_value_k,
+                                                                                                  cleaning_batch_size)
         iteration_results["iteration"].append(iteration)
         iteration_results["already_cleaned_rows"].append(iteration_info["already_cleaned_rows"])
         iteration_results["total_corrupted_rows"].append(iteration_info["total_corrupted_rows"])
@@ -277,12 +277,11 @@ def print_legend():
 
 
 def measure_shapley_naive_exec_time(corruption_fraction, num_iterations, use_shapley_weighting, shapley_value_k,
-                                   cleaning_batch_size, repeats=10):
-
+                                    cleaning_batch_size, repeats=10):
     result = timeit.repeat(stmt=cleandoc(f"""
     for iteration in range({num_iterations}):
         print(f"Starting iteration {{iteration}} now...")
-        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley(corrupted_row_ids,
+        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_naive(corrupted_row_ids,
                                                                                             label_corrections,
                                                                                             total_updates,
                                                                                             {use_shapley_weighting},
@@ -301,7 +300,7 @@ def measure_shapley_naive_exec_time(corruption_fraction, num_iterations, use_sha
     
     """),
                            setup=cleandoc(f"""
-    from whatif.example_pipelines.product_images_shapley_naive import create_corrupt_data, execute_image_pipeline_w_shapley
+    from whatif.example_pipelines.product_images_shapley_naive import create_corrupt_data, execute_image_pipeline_w_shapley_naive
     import pandas as pd
     
     corrupted_row_ids = create_corrupt_data({corruption_fraction})
