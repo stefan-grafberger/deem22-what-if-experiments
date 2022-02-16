@@ -22,6 +22,8 @@ def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, labe
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
+    # fuer qualitaetsvariante 2 csv damit accuracy stimmt in plots
+
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
     train_data = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/'
                              f'product_images_corrupted.csv',
@@ -84,7 +86,7 @@ def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, labe
 
     image_lineage_ids = save_row_tracking_information_naive(train)
 
-    x_train = pipeline_without_model.fit_transform(train[['image']])
+    x_train = pipeline_without_model.fit_transform(train[['image']])  # beide varianten mal ausprobieren, unklar was fair
     model_without_pipeline.fit(x_train, y_train)
 
     x_test = pipeline_without_model.transform(test[['image']])

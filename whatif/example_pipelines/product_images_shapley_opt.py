@@ -18,9 +18,11 @@ from whatif.refinements import _data_valuation
 from whatif.utils.utils import get_project_root
 
 
-def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, label_corrections: pd.DataFrame,
-                                         total_updates: int, shapley_value_cleaning=True, shapley_value_k=10,
-                                         cleaning_batch_size=50):
+def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shapley_value_cleaning=True,
+                                         shapley_value_k=10, cleaning_batch_size=50):
+    label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
+    total_updates = 0
+
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
@@ -191,8 +193,6 @@ def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids, label_co
 def do_shapley_value_opt(corruption_fraction, num_iterations, use_shapley_weighting, shapley_value_k,
                          cleaning_batch_size):
     corrupted_row_ids = create_corrupt_data(corruption_fraction)
-    label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
-    total_updates = 0
     iteration_results = {
         "iteration": [],
         "already_cleaned_rows": [],
@@ -203,11 +203,10 @@ def do_shapley_value_opt(corruption_fraction, num_iterations, use_shapley_weight
         "fraction_data_cleaned": [],
         "model_score": []
     }
+    # TODO: Inline for
     for iteration in range(num_iterations):
         print(f"Starting iteration {iteration} now...")
         label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_opt(corrupted_row_ids,
-                                                                                                label_corrections,
-                                                                                                total_updates,
                                                                                                 use_shapley_weighting,
                                                                                                 shapley_value_k,
                                                                                                 cleaning_batch_size)
