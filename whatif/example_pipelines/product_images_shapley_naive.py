@@ -141,17 +141,17 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corr
     corruption_not_detected_yet = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'right_only'])
     print(f"Did not yet detect {corruption_not_detected_yet}# rows that were corrupted in iteration")
 
-    new_label_corrections = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both']
+    new_label_corrections = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both'].copy()
     if len(new_label_corrections) != 0:
-        new_label_corrections.loc[new_label_corrections['category_name'] == 'Sneaker', 'category_id'] = 9
-        new_label_corrections.loc[new_label_corrections['category_name'] == 'Ankle boot', 'category_id'] = 7
+        new_label_corrections.loc[new_label_corrections.category_name == 'Sneaker', 'category_id'] = 9
+        new_label_corrections.loc[new_label_corrections.category_name == 'Ankle boot', 'category_id'] = 7
     else:
         new_label_corrections['category_id'] = None
     new_label_corrections = new_label_corrections[['image_lineage_id', 'category_id']]
 
     label_corrections = pd.concat([label_corrections, new_label_corrections])
-    label_corrections.image_lineage_id = label_corrections.image_lineage_id.astype(int)
-    label_corrections.category_id = label_corrections.category_id.astype(int)
+    label_corrections['image_lineage_id'] = label_corrections['image_lineage_id'].astype(int)
+    label_corrections['category_id'] = label_corrections['category_id'].astype(int)
 
     total_updates += correct_corruption_alarm
     fraction_data_cleaned = total_updates / total_corrupted_rows
@@ -201,10 +201,9 @@ def create_corrupt_data(corruption_fraction=0.5):
                              f'sneakers/product_image_ids_corrupted.csv', index=False)
     return corrupted_row_ids
 
-
 corrupted_row_ids = create_corrupt_data(0.2)
 label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
 total_updates = 0
-for _ in range(40):
+for _ in range(10):
     label_corrections, total_updates = execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections,
                                                                         total_updates, True)
