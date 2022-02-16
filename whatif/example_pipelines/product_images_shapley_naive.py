@@ -14,7 +14,7 @@ from whatif.refinements import _data_valuation
 from whatif.utils.utils import get_project_root
 
 
-def execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections: pd.DataFrame, total_updates):
+def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corrections: pd.DataFrame, total_updates: int):
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
@@ -22,13 +22,21 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections: pd.Da
     train_data = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/'
                              f'product_images_corrupted.csv',
                              converters={'image': decode_image})
+
     # We need some way to identify fact table rows throughout the pipeline and across runs
     train_data['image_lineage_id'] = range(0, len(train_data))
-    train_data.set_index("image_lineage_id")
 
     # Apply label corrections
-    # TODO
-    # train_data.update(label_corrections)
+    train_data = train_data.merge(label_corrections, how='left', on='image_lineage_id', indicator=True)
+    train_data.loc[train_data['_merge'] == 'left_only', 'category_id'] = train_data.loc[
+        train_data['_merge'] == 'left_only', 'category_id_x']
+    train_data.loc[train_data['_merge'] != 'left_only', 'category_id'] = train_data.loc[
+        train_data['_merge'] != 'left_only', 'category_id_y']
+    train_data.set_index('image_lineage_id')
+    train_data = train_data.sort_index()
+    train_data['category_id'] = train_data['category_id'].astype(int)
+    train_data = train_data.drop(columns=['_merge'])
+    #
 
     product_categories = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
@@ -107,27 +115,45 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections: pd.Da
     #     plt.show()
     # print(rows_to_fix)
     # fix labels:
-    print(f"Already cleaned rows: {len(label_corrections)}#")
-    print(f"Total corrupted rows: {len(corrupted_row_ids)}#")
+    already_cleaned_rows = len(label_corrections)
+    print(f"Already cleaned rows: {already_cleaned_rows}#")
+    total_corrupted_rows = len(corrupted_row_ids)
+    print(f"Total corrupted rows: {total_corrupted_rows}#")
+
+    # Get rows that are still corrupted
+    corrupted_row_ids = corrupted_row_ids.merge(label_corrections, how='outer', on='image_lineage_id', indicator=True)
+    corrupted_row_ids = corrupted_row_ids[corrupted_row_ids['_merge'] == 'left_only']
+    corrupted_row_ids = corrupted_row_ids.drop(columns=['_merge'])
+    assert (total_corrupted_rows - len(corrupted_row_ids)) == len(label_corrections)
+
     corrupted_row_ids.image_lineage_id = corrupted_row_ids.image_lineage_id.astype(int)
     corrections_and_corrupted = joined_rows_to_fix.merge(corrupted_row_ids, how='outer', on="image_lineage_id", indicator=True)
     # Rows to fix that were not corrupted
+
     false_corruption_alarm = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'left_only'])
     print(f"False alarm for {false_corruption_alarm}# rows that were not corrupted")
     correct_corruption_alarm = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both'])
     print(f"Correctly detected {correct_corruption_alarm}# rows that were corrupted in iteration")
     corruption_not_detected_yet = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'right_only'])
     print(f"Did not yet detect {corruption_not_detected_yet}# rows that were corrupted in iteration")
-    # TODO: Compute percentage, update label corrections
+
+    new_label_corrections = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both']
+    new_label_corrections.loc[new_label_corrections['category_name'] == 'Sneaker', 'category_id'] = 9
+    new_label_corrections.loc[new_label_corrections['category_name'] == 'Ankle boot', 'category_id'] = 7
+    new_label_corrections = new_label_corrections[['image_lineage_id', 'category_id']]
+
+    label_corrections = pd.concat([label_corrections, new_label_corrections])
+    label_corrections.image_lineage_id = label_corrections.image_lineage_id.astype(int)
+    label_corrections.category_id = label_corrections.category_id.astype(int)
 
     total_updates += correct_corruption_alarm
-    fraction_data_cleaned = total_updates / len(corrupted_row_ids)
+    fraction_data_cleaned = total_updates / total_corrupted_rows
     print(f"Fraction of cleaned data: {fraction_data_cleaned}")
 
-    label_corrections = {}  # TODO
+    return label_corrections, total_updates
 
 
-def create_corrupt_data():
+def create_corrupt_data(corruption_fraction=0.5):
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
     train_data = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_images.csv')
@@ -143,7 +169,7 @@ def create_corrupt_data():
     with_categories = train_data.merge(product_categories, on='category_id')
     categories_to_distinguish = ['Sneaker', 'Ankle boot']
     images_of_interest = with_categories[with_categories['category_name'].isin(categories_to_distinguish)]
-    rows_to_corrupt = images_of_interest.sample(frac=0.5, replace=False)
+    rows_to_corrupt = images_of_interest.sample(frac=corruption_fraction, replace=False)
     rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Sneaker', 'category_id'] = 9
     rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Ankle boot', 'category_id'] = 7
 
@@ -169,6 +195,8 @@ def create_corrupt_data():
     return corrupted_row_ids
 
 
-corrupted_row_ids = create_corrupt_data()
+corrupted_row_ids = create_corrupt_data(0.2)
 label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
-execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections, 0)
+total_updates = 0
+for _ in range(10):
+    label_corrections, total_updates = execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections, total_updates)
