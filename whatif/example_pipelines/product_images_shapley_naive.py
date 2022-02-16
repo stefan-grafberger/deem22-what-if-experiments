@@ -1,3 +1,6 @@
+import timeit
+from inspect import cleandoc
+
 import numpy as np
 import pandas as pd
 import sys
@@ -271,3 +274,50 @@ def print_legend():
     print("corruption_not_detected_yet: In that and previous iterations, there were corrupted #rows not discover yet")
     print("fraction_data_cleaned: fraction of corrupted data that was cleaned already")
     print("model_score: Model score on current data with potential left-over corruptions")
+
+
+def measure_shapley_naive_exec_time(corruption_fraction, num_iterations, use_shapley_weighting, shapley_value_k,
+                                   cleaning_batch_size, repeats=10):
+
+    result = timeit.repeat(stmt=cleandoc(f"""
+    for iteration in range({num_iterations}):
+        print(f"Starting iteration {{iteration}} now...")
+        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley(corrupted_row_ids,
+                                                                                            label_corrections,
+                                                                                            total_updates,
+                                                                                            {use_shapley_weighting},
+                                                                                            {shapley_value_k},
+                                                                                            {cleaning_batch_size})
+        iteration_results["iteration"].append(iteration)
+        iteration_results["already_cleaned_rows"].append(iteration_info["already_cleaned_rows"])
+        iteration_results["total_corrupted_rows"].append(iteration_info["total_corrupted_rows"])
+        iteration_results["false_corruption_alarm"].append(iteration_info["false_corruption_alarm"])
+        iteration_results["correct_corruption_alarm"].append(iteration_info["correct_corruption_alarm"])
+        iteration_results["corruption_not_detected_yet"].append(iteration_info["corruption_not_detected_yet"])
+        iteration_results["fraction_data_cleaned"].append(iteration_info["fraction_data_cleaned"])
+        iteration_results["model_score"].append(iteration_info["model_score"])
+
+    print("Done!")
+    
+    """),
+                           setup=cleandoc(f"""
+    from whatif.example_pipelines.product_images_shapley_naive import create_corrupt_data, execute_image_pipeline_w_shapley
+    import pandas as pd
+    
+    corrupted_row_ids = create_corrupt_data({corruption_fraction})
+    label_corrections = pd.DataFrame({{'image_lineage_id': [], "category_id": []}})
+    total_updates = 0
+    
+    iteration_results = {{
+        "iteration": [],
+        "already_cleaned_rows": [],
+        "total_corrupted_rows": [],
+        "false_corruption_alarm": [],
+        "correct_corruption_alarm": [],
+        "corruption_not_detected_yet": [],
+        "fraction_data_cleaned": [],
+        "model_score": []
+    }}
+    """),
+                           repeat=repeats, number=1)
+    return pd.DataFrame({"runtimes": result})
