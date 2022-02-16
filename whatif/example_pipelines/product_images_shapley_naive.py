@@ -14,7 +14,8 @@ from whatif.refinements import _data_valuation
 from whatif.utils.utils import get_project_root
 
 
-def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corrections: pd.DataFrame, total_updates: int):
+def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corrections: pd.DataFrame,
+                                     total_updates: int, shapley_value_cleaning=True):
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
@@ -105,7 +106,10 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corr
                                                              10)
     df_with_id_and_shapley_value = pd.DataFrame(
         {"image_lineage_id": image_lineage_ids, "shapley_value": shapley_values})
-    rows_to_fix = df_with_id_and_shapley_value.nsmallest(50, "shapley_value")
+    if shapley_value_cleaning is True:
+        rows_to_fix = df_with_id_and_shapley_value.nsmallest(50, "shapley_value")
+    else:
+        rows_to_fix = df_with_id_and_shapley_value.sample(n=50, replace=False)
     joined_rows_to_fix = train.merge(rows_to_fix, on="image_lineage_id")
     # Show problematic imgs with labels
     # for row_index, row in list(joined_rows_to_fix.iterrows())[0:3]:
@@ -138,8 +142,11 @@ def execute_image_pipeline_w_shapley(corrupted_row_ids: pd.DataFrame, label_corr
     print(f"Did not yet detect {corruption_not_detected_yet}# rows that were corrupted in iteration")
 
     new_label_corrections = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both']
-    new_label_corrections.loc[new_label_corrections['category_name'] == 'Sneaker', 'category_id'] = 9
-    new_label_corrections.loc[new_label_corrections['category_name'] == 'Ankle boot', 'category_id'] = 7
+    if len(new_label_corrections) != 0:
+        new_label_corrections.loc[new_label_corrections['category_name'] == 'Sneaker', 'category_id'] = 9
+        new_label_corrections.loc[new_label_corrections['category_name'] == 'Ankle boot', 'category_id'] = 7
+    else:
+        new_label_corrections['category_id'] = None
     new_label_corrections = new_label_corrections[['image_lineage_id', 'category_id']]
 
     label_corrections = pd.concat([label_corrections, new_label_corrections])
@@ -198,5 +205,6 @@ def create_corrupt_data(corruption_fraction=0.5):
 corrupted_row_ids = create_corrupt_data(0.2)
 label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
 total_updates = 0
-for _ in range(10):
-    label_corrections, total_updates = execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections, total_updates)
+for _ in range(40):
+    label_corrections, total_updates = execute_image_pipeline_w_shapley(corrupted_row_ids, label_corrections,
+                                                                        total_updates, True)
