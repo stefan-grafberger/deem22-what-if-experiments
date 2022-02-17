@@ -273,6 +273,3 @@ def measure_shapley_opt_exec_time(corruption_fraction, num_iterations, use_shapl
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
-
-
-do_shapley_value_opt(0.5, 10, True, 10, 50, True)
