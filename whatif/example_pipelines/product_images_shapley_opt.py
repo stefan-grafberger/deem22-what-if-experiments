@@ -3,7 +3,6 @@ from inspect import cleandoc
 
 import numpy as np
 import pandas as pd
-import sys
 
 from tensorflow.python.keras.wrappers.scikit_learn import KerasClassifier
 from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Dropout, Flatten
@@ -77,13 +76,13 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
     # if len(sys.argv) > 1:
     #     random_seed_for_splitting = int(sys.argv[1])
 
-    train, test = train_test_split(images_of_interest, test_size=0.2, random_state=random_seed_for_splitting)
+    train, test = train_test_split(images_of_interest, test_size=0.2) # , random_state=random_seed_for_splitting)
 
     y_train = label_binarize(train['category_name'], classes=categories_to_distinguish)
     y_test = label_binarize(test['category_name'], classes=categories_to_distinguish)
 
     train_image_lineage_ids = save_row_tracking_information_opt(train)
-    test_image_lineage_ids = save_row_tracking_information_opt(train)
+    test_image_lineage_ids = save_row_tracking_information_opt(test)
 
     x_train = pipeline_without_model.fit_transform(train[['image']])
     x_test = pipeline_without_model.transform(test[['image']])
@@ -95,7 +94,7 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
                                                            test_image_lineage_ids,
                                                            model_without_pipeline, num_iterations,
                                                            shapley_value_cleaning, shapley_value_k, train, x_test,
-                                                           x_train, y_test, y_train)
+                                                           x_train, y_test, y_train, random_seed_for_splitting)
 
     return iteration_results
 
@@ -103,7 +102,7 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
 def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, do_model_train_and_score,
                                        train_image_lineage_ids, test_image_lineage_ids, model_without_pipeline,
                                        num_iterations, shapley_value_cleaning, shapley_value_k, train,
-                                       x_test, x_train, y_test, y_train):
+                                       x_test, x_train, y_test, y_train, random_seed_for_splitting):
     iteration_results = {
         "iteration": [],
         "already_cleaned_rows": [],
@@ -145,16 +144,11 @@ def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, d
                                                                      train_image_lineage_ids)
         # TODO: Redo train test split, continue and make sure this works
         # error: does not work because x train is not one dimensional
-        train_df_for_resplit = pd.DataFrame({'x': x_train, 'y': y_train_squeezed, 'image_lineage_id': train_image_lineage_ids})
-        test_df_for_resplit = pd.DataFrame({'x': x_test, 'y': y_test_squeezed, 'image_lineage_id': test_image_lineage_ids})
-        big_df_for_resplit = pd.concat(train_df_for_resplit, test_df_for_resplit)
-        train_resplit, test_resplit = train_test_split(big_df_for_resplit, test_size=0.2)
-        x_train = train_resplit['x'].to_numpy()
-        x_test = test_resplit['x'].to_numpy()
-        y_train_squeezed = train_resplit['y'].to_numpy()
-        y_test_squeezed = test_resplit['y'].to_numpy()
-        train_image_lineage_ids = train_resplit['image_lineage_id'].to_numpy()
-        test_image_lineage_ids = test_resplit['image_lineage_id'].to_numpy()
+        big_x = np.concatenate([x_train, x_test])
+        big_y = np.concatenate([y_train_squeezed, y_test_squeezed])
+        big_lineage = np.concatenate([train_image_lineage_ids, test_image_lineage_ids])
+        x_train, x_test, y_train_squeezed, y_test_squeezed, train_image_lineage_ids, test_image_lineage_ids = \
+            train_test_split(big_x, big_y, big_lineage, test_size=0.2)  #, random_state=random_seed_for_splitting)
 
         iteration_info['model_score'] = model_score
 
@@ -242,6 +236,8 @@ def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids,
     corruption_not_detected_yet = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'right_only'])
     iteration_info["corruption_not_detected_yet"] = corruption_not_detected_yet
 
+    assert false_corruption_alarm + correct_corruption_alarm == cleaning_batch_size
+
     already_cleaned_rows += correct_corruption_alarm
     fraction_data_cleaned = already_cleaned_rows / total_corrupted_rows
     iteration_info["fraction_data_cleaned"] = fraction_data_cleaned
@@ -289,3 +285,6 @@ def measure_shapley_opt_exec_time(corruption_fraction, num_iterations, use_shapl
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
+
+
+do_shapley_value_opt(0.2, 10, True, 10, 50, True)

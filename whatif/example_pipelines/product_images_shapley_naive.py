@@ -22,8 +22,6 @@ def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, labe
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
-    # fuer qualitaetsvariante 2 csv damit accuracy stimmt in plots
-
     # TODO change this to pyarrow + parquet, which can handle numpy arrays well
     train_data = pd.read_csv(f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/'
                              f'product_images_corrupted.csv',
@@ -79,7 +77,7 @@ def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, labe
     # if len(sys.argv) > 1:
     #     random_seed_for_splitting = int(sys.argv[1])
 
-    train, test = train_test_split(images_of_interest, test_size=0.2, random_state=random_seed_for_splitting)
+    train, test = train_test_split(images_of_interest, test_size=0.2)  #, random_state=random_seed_for_splitting)
 
     y_train = label_binarize(train['category_name'], classes=categories_to_distinguish)
     y_test = label_binarize(test['category_name'], classes=categories_to_distinguish)
@@ -188,6 +186,8 @@ def do_shapley_value_cleaning_naive(corrupted_row_ids, image_lineage_ids, label_
     already_cleaned_rows += correct_corruption_alarm
     fraction_data_cleaned = already_cleaned_rows / total_corrupted_rows
     iteration_info["fraction_data_cleaned"] = fraction_data_cleaned
+
+    assert false_corruption_alarm + correct_corruption_alarm == cleaning_batch_size
 
     return label_corrections, iteration_info
 
@@ -324,3 +324,6 @@ def measure_shapley_naive_exec_time(corruption_fraction, num_iterations, use_sha
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
+
+
+do_shapley_value_naive(0.2, 10, True, 10, 50, True)
