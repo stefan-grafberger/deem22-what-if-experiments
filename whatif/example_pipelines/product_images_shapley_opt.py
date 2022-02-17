@@ -93,7 +93,7 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
                                                            train_image_lineage_ids,
                                                            test_image_lineage_ids,
                                                            model_without_pipeline, num_iterations,
-                                                           shapley_value_cleaning, shapley_value_k, train, x_test,
+                                                           shapley_value_cleaning, shapley_value_k, images_of_interest, x_test,
                                                            x_train, y_test, y_train, random_seed_for_splitting)
 
     return iteration_results
@@ -101,7 +101,7 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
 
 def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, do_model_train_and_score,
                                        train_image_lineage_ids, test_image_lineage_ids, model_without_pipeline,
-                                       num_iterations, shapley_value_cleaning, shapley_value_k, train,
+                                       num_iterations, shapley_value_cleaning, shapley_value_k, images_of_interest,
                                        x_test, x_train, y_test, y_train, random_seed_for_splitting):
     iteration_results = {
         "iteration": [],
@@ -130,7 +130,7 @@ def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, d
 
         cleaning_results = do_shapley_value_cleaning_opt(still_corrupted_rows, train_image_lineage_ids,
                                                          already_cleaned_rows, total_corrupted_rows,
-                                                         shapley_value_cleaning, train, x_test, x_train,
+                                                         shapley_value_cleaning, images_of_interest, x_test, x_train,
                                                          y_test_squeezed,
                                                          y_train_squeezed, shapley_value_k, cleaning_batch_size)
         new_label_corrections, iteration_info, already_cleaned_rows = cleaning_results
@@ -199,7 +199,7 @@ def enable_fact_table_row_tracking_opt(train_data):
 def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids,
                                   already_cleaned_rows, total_corrupted_rows,
                                   shapley_value_cleaning,
-                                  train, x_test, x_train, y_test, y_train, shapley_value_k,
+                                  images_of_interest, x_test, x_train, y_test, y_train, shapley_value_k,
                                   cleaning_batch_size):
     iteration_info = {}
     shapley_values = _data_valuation._compute_shapley_values(x_train,
@@ -213,7 +213,7 @@ def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids,
         rows_to_fix = df_with_id_and_shapley_value.nsmallest(cleaning_batch_size, "shapley_value")
     else:
         rows_to_fix = df_with_id_and_shapley_value.sample(n=cleaning_batch_size, replace=False)
-    joined_rows_to_fix = train.merge(rows_to_fix, on="image_lineage_id")
+    joined_rows_to_fix = images_of_interest.merge(rows_to_fix, on="image_lineage_id")  # Issue is here, not all corruptions are in train
     # Show problematic imgs with labels
     # for row_index, row in list(joined_rows_to_fix.iterrows())[0:3]:
     #     from matplotlib import pyplot as plt
@@ -285,6 +285,3 @@ def measure_shapley_opt_exec_time(corruption_fraction, num_iterations, use_shapl
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
-
-
-do_shapley_value_opt(0.2, 10, True, 10, 50, True)

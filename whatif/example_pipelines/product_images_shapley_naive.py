@@ -324,6 +324,3 @@ def measure_shapley_naive_exec_time(corruption_fraction, num_iterations, use_sha
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
-
-
-do_shapley_value_naive(0.2, 10, True, 10, 50, True)
