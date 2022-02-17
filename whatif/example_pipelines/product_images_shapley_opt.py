@@ -82,14 +82,17 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
     y_train = label_binarize(train['category_name'], classes=categories_to_distinguish)
     y_test = label_binarize(test['category_name'], classes=categories_to_distinguish)
 
-    image_lineage_ids = save_row_tracking_information_opt(train)
+    train_image_lineage_ids = save_row_tracking_information_opt(train)
+    test_image_lineage_ids = save_row_tracking_information_opt(train)
 
     x_train = pipeline_without_model.fit_transform(train[['image']])
     x_test = pipeline_without_model.transform(test[['image']])
 
     # Cleaning start
     iteration_results = cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids,
-                                                           do_model_train_and_score, image_lineage_ids,
+                                                           do_model_train_and_score,
+                                                           train_image_lineage_ids,
+                                                           test_image_lineage_ids,
                                                            model_without_pipeline, num_iterations,
                                                            shapley_value_cleaning, shapley_value_k, train, x_test,
                                                            x_train, y_test, y_train)
@@ -98,9 +101,9 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
 
 
 def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, do_model_train_and_score,
-                                       image_lineage_ids, model_without_pipeline, num_iterations,
-                                       shapley_value_cleaning, shapley_value_k, train, x_test, x_train, y_test,
-                                       y_train):
+                                       train_image_lineage_ids, test_image_lineage_ids, model_without_pipeline,
+                                       num_iterations, shapley_value_cleaning, shapley_value_k, train,
+                                       x_test, x_train, y_test, y_train):
     iteration_results = {
         "iteration": [],
         "already_cleaned_rows": [],
@@ -126,7 +129,7 @@ def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, d
         # Disable printing for the experiments to not spam the console
         # print(model_score)
 
-        cleaning_results = do_shapley_value_cleaning_opt(still_corrupted_rows, image_lineage_ids,
+        cleaning_results = do_shapley_value_cleaning_opt(still_corrupted_rows, train_image_lineage_ids,
                                                          already_cleaned_rows, total_corrupted_rows,
                                                          shapley_value_cleaning, train, x_test, x_train,
                                                          y_test_squeezed,
@@ -139,7 +142,20 @@ def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, d
         # only train contains corruptions, like in the qualitative experiment, but thats difficult if we want to
         # still have a train_test_split
         y_train_squeezed = apply_label_corrections_to_train_data_opt(new_label_corrections, y_train_squeezed,
-                                                                     image_lineage_ids)
+                                                                     train_image_lineage_ids)
+        # TODO: Redo train test split, continue and make sure this works
+        # error: does not work because x train is not one dimensional
+        train_df_for_resplit = pd.DataFrame({'x': x_train, 'y': y_train_squeezed, 'image_lineage_id': train_image_lineage_ids})
+        test_df_for_resplit = pd.DataFrame({'x': x_test, 'y': y_test_squeezed, 'image_lineage_id': test_image_lineage_ids})
+        big_df_for_resplit = pd.concat(train_df_for_resplit, test_df_for_resplit)
+        train_resplit, test_resplit = train_test_split(big_df_for_resplit, test_size=0.2)
+        x_train = train_resplit['x'].to_numpy()
+        x_test = test_resplit['x'].to_numpy()
+        y_train_squeezed = train_resplit['y'].to_numpy()
+        y_test_squeezed = test_resplit['y'].to_numpy()
+        train_image_lineage_ids = train_resplit['image_lineage_id'].to_numpy()
+        test_image_lineage_ids = test_resplit['image_lineage_id'].to_numpy()
+
         iteration_info['model_score'] = model_score
 
         iteration_results["iteration"].append(iteration)
