@@ -19,10 +19,8 @@ from whatif.utils.utils import get_project_root
 
 
 def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shapley_value_cleaning=True,
-                                         shapley_value_k=10, cleaning_batch_size=50, do_model_train_and_score=True):
-    label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
-    total_updates = 0
-
+                                         shapley_value_k=10, cleaning_batch_size=50, do_model_train_and_score=True,
+                                         num_iterations=10):
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
 
@@ -32,8 +30,6 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
                              converters={'image': decode_image})
 
     enable_fact_table_row_tracking_opt(train_data)
-
-    train_data = apply_label_corrections_to_train_data_opt(label_corrections, train_data)
 
     product_categories = pd.read_csv(
         f'{str(get_project_root())}/whatif/example_pipelines/datasets/sneakers/product_categories.csv')
@@ -91,21 +87,78 @@ def execute_image_pipeline_w_shapley_opt(corrupted_row_ids: pd.DataFrame, shaple
     x_train = pipeline_without_model.fit_transform(train[['image']])
     x_test = pipeline_without_model.transform(test[['image']])
 
-    if do_model_train_and_score:
-        model_without_pipeline.fit(x_train, y_train)
-        model_score = model_without_pipeline.score(x_test, y_test)
-    else:
-        model_score = None
-    # Disable printing for the experiments to not spam the console
-    # print(model_score)
+    # Cleaning start
+    iteration_results = cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids,
+                                                           do_model_train_and_score, image_lineage_ids,
+                                                           model_without_pipeline, num_iterations,
+                                                           shapley_value_cleaning, shapley_value_k, train, x_test,
+                                                           x_train, y_test, y_train)
 
-    cleaning_results = do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids, label_corrections,
-                                                     shapley_value_cleaning, total_updates, train, x_test, x_train,
-                                                     y_test,
-                                                     y_train, shapley_value_k, cleaning_batch_size)
-    label_corrections, total_updates, iteration_info = cleaning_results
-    iteration_info['model_score'] = model_score
-    return cleaning_results
+    return iteration_results
+
+
+def cleaning_with_maybe_model_training(cleaning_batch_size, corrupted_row_ids, do_model_train_and_score,
+                                       image_lineage_ids, model_without_pipeline, num_iterations,
+                                       shapley_value_cleaning, shapley_value_k, train, x_test, x_train, y_test,
+                                       y_train):
+    iteration_results = {
+        "iteration": [],
+        "already_cleaned_rows": [],
+        "total_corrupted_rows": [],
+        "false_corruption_alarm": [],
+        "correct_corruption_alarm": [],
+        "corruption_not_detected_yet": [],
+        "fraction_data_cleaned": [],
+        "model_score": []
+    }
+    already_cleaned_rows = 0
+    total_corrupted_rows = len(corrupted_row_ids)
+    y_train_squeezed = np.squeeze(y_train)
+    y_test_squeezed = np.squeeze(y_test)
+    still_corrupted_rows = corrupted_row_ids
+    for iteration in range(num_iterations):
+        print(f"Starting iteration {iteration} now...")
+        if do_model_train_and_score:
+            model_without_pipeline.fit(x_train, np.expand_dims(y_train_squeezed, axis=1))
+            model_score = model_without_pipeline.score(x_test, np.expand_dims(y_test_squeezed, axis=1))
+        else:
+            model_score = None
+        # Disable printing for the experiments to not spam the console
+        # print(model_score)
+
+        cleaning_results = do_shapley_value_cleaning_opt(still_corrupted_rows, image_lineage_ids,
+                                                         already_cleaned_rows, total_corrupted_rows,
+                                                         shapley_value_cleaning, train, x_test, x_train,
+                                                         y_test_squeezed,
+                                                         y_train_squeezed, shapley_value_k, cleaning_batch_size)
+        new_label_corrections, iteration_info, already_cleaned_rows = cleaning_results
+
+        # Get rows that are still corrupted
+        still_corrupted_rows = apply_label_corrections_to_corrupted_rows(still_corrupted_rows, new_label_corrections)
+        # only count corruptions in train! If we would track statistics here, we would want to make sure
+        # only train contains corruptions, like in the qualitative experiment, but thats difficult if we want to
+        # still have a train_test_split
+        y_train_squeezed = apply_label_corrections_to_train_data_opt(new_label_corrections, y_train_squeezed,
+                                                                     image_lineage_ids)
+        iteration_info['model_score'] = model_score
+
+        iteration_results["iteration"].append(iteration)
+        iteration_results["already_cleaned_rows"].append(iteration_info["already_cleaned_rows"])
+        iteration_results["total_corrupted_rows"].append(iteration_info["total_corrupted_rows"])
+        iteration_results["false_corruption_alarm"].append(iteration_info["false_corruption_alarm"])
+        iteration_results["correct_corruption_alarm"].append(iteration_info["correct_corruption_alarm"])
+        iteration_results["corruption_not_detected_yet"].append(iteration_info["corruption_not_detected_yet"])
+        iteration_results["fraction_data_cleaned"].append(iteration_info["fraction_data_cleaned"])
+        iteration_results["model_score"].append(iteration_info["model_score"])
+    return iteration_results
+
+
+def apply_label_corrections_to_corrupted_rows(corrupted_row_ids, label_corrections):
+    corrupted_row_ids = corrupted_row_ids.merge(label_corrections, how='outer', on='image_lineage_id',
+                                                indicator=True)
+    corrupted_row_ids = corrupted_row_ids[corrupted_row_ids['_merge'] == 'left_only']
+    corrupted_row_ids = corrupted_row_ids.drop(columns=['_merge'])
+    return corrupted_row_ids
 
 
 def save_row_tracking_information_opt(train):
@@ -114,18 +167,18 @@ def save_row_tracking_information_opt(train):
     return image_lineage_ids
 
 
-def apply_label_corrections_to_train_data_opt(label_corrections, train_data):
+def apply_label_corrections_to_train_data_opt(label_corrections, y_train, image_lineage_ids):
     # Apply label corrections
-    train_data = train_data.merge(label_corrections, how='left', on='image_lineage_id', indicator=True)
-    train_data.loc[train_data['_merge'] == 'left_only', 'category_id'] = train_data.loc[
-        train_data['_merge'] == 'left_only', 'category_id_x']
-    train_data.loc[train_data['_merge'] != 'left_only', 'category_id'] = train_data.loc[
-        train_data['_merge'] != 'left_only', 'category_id_y']
-    train_data.set_index('image_lineage_id')
-    train_data = train_data.sort_index()
-    train_data['category_id'] = train_data['category_id'].astype(int)
-    train_data = train_data.drop(columns=['_merge'])
-    return train_data
+    y_train_df = pd.DataFrame({"label": y_train, "image_lineage_id": image_lineage_ids})
+    y_train_df = y_train_df.merge(label_corrections, how='left', on='image_lineage_id', indicator=True)
+    y_train_df.loc[y_train_df['_merge'] != 'left_only', 'label'] = \
+        (y_train_df.loc[y_train_df['_merge'] != 'left_only', 'label'] + 1) % 2
+    y_train_df.set_index('image_lineage_id')
+    y_train_df = y_train_df.sort_index()
+    y_train_df['label'] = y_train_df['label'].astype(int)
+
+    # Not category name is used
+    return y_train_df['label'].to_numpy()
 
 
 def enable_fact_table_row_tracking_opt(train_data):
@@ -133,14 +186,16 @@ def enable_fact_table_row_tracking_opt(train_data):
     train_data['image_lineage_id'] = range(0, len(train_data))
 
 
-def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids, label_corrections, shapley_value_cleaning,
-                                  total_updates, train, x_test, x_train, y_test, y_train, shapley_value_k,
+def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids,
+                                  already_cleaned_rows, total_corrupted_rows,
+                                  shapley_value_cleaning,
+                                  train, x_test, x_train, y_test, y_train, shapley_value_k,
                                   cleaning_batch_size):
     iteration_info = {}
     shapley_values = _data_valuation._compute_shapley_values(x_train,
-                                                             np.squeeze(y_train),
+                                                             y_train,
                                                              x_test,
-                                                             np.squeeze(y_test),
+                                                             y_test,
                                                              shapley_value_k)
     df_with_id_and_shapley_value = pd.DataFrame(
         {"image_lineage_id": image_lineage_ids, "shapley_value": shapley_values})
@@ -157,15 +212,9 @@ def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids, label_co
     #     plt.show()
     # print(rows_to_fix)
     # fix labels:
-    already_cleaned_rows = len(label_corrections)
     iteration_info["already_cleaned_rows"] = already_cleaned_rows
-    total_corrupted_rows = len(corrupted_row_ids)
     iteration_info["total_corrupted_rows"] = total_corrupted_rows
-    # Get rows that are still corrupted
-    corrupted_row_ids = corrupted_row_ids.merge(label_corrections, how='outer', on='image_lineage_id', indicator=True)
-    corrupted_row_ids = corrupted_row_ids[corrupted_row_ids['_merge'] == 'left_only']
-    corrupted_row_ids = corrupted_row_ids.drop(columns=['_merge'])
-    assert (total_corrupted_rows - len(corrupted_row_ids)) == len(label_corrections)
+    assert (total_corrupted_rows - len(corrupted_row_ids)) == already_cleaned_rows
     corrupted_row_ids.image_lineage_id = corrupted_row_ids.image_lineage_id.astype(int)
     corrections_and_corrupted = joined_rows_to_fix.merge(corrupted_row_ids, how='outer', on="image_lineage_id",
                                                          indicator=True)
@@ -176,52 +225,29 @@ def do_shapley_value_cleaning_opt(corrupted_row_ids, image_lineage_ids, label_co
     iteration_info["correct_corruption_alarm"] = correct_corruption_alarm
     corruption_not_detected_yet = len(corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'right_only'])
     iteration_info["corruption_not_detected_yet"] = corruption_not_detected_yet
-    new_label_corrections = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both'].copy()
-    if len(new_label_corrections) != 0:
-        new_label_corrections.loc[new_label_corrections.category_name == 'Sneaker', 'category_id'] = 9
-        new_label_corrections.loc[new_label_corrections.category_name == 'Ankle boot', 'category_id'] = 7
-    else:
-        new_label_corrections['category_id'] = None
-    new_label_corrections = new_label_corrections[['image_lineage_id', 'category_id']]
-    label_corrections = pd.concat([label_corrections, new_label_corrections])
-    label_corrections['image_lineage_id'] = label_corrections['image_lineage_id'].astype(int)
-    label_corrections['category_id'] = label_corrections['category_id'].astype(int)
-    total_updates += correct_corruption_alarm
-    fraction_data_cleaned = total_updates / total_corrupted_rows
+
+    already_cleaned_rows += correct_corruption_alarm
+    fraction_data_cleaned = already_cleaned_rows / total_corrupted_rows
     iteration_info["fraction_data_cleaned"] = fraction_data_cleaned
 
-    return label_corrections, total_updates, iteration_info
+
+    new_label_corrections = corrections_and_corrupted[corrections_and_corrupted['_merge'] == 'both'].copy()
+    new_label_corrections = new_label_corrections[['image_lineage_id']]
+    new_label_corrections['image_lineage_id'] = new_label_corrections['image_lineage_id'].astype(int)
+
+    return new_label_corrections, iteration_info, already_cleaned_rows
 
 
 def do_shapley_value_opt(corruption_fraction, num_iterations, use_shapley_weighting, shapley_value_k,
                          cleaning_batch_size, do_model_train_and_score):
     corrupted_row_ids = create_corrupt_data(corruption_fraction)
-    iteration_results = {
-        "iteration": [],
-        "already_cleaned_rows": [],
-        "total_corrupted_rows": [],
-        "false_corruption_alarm": [],
-        "correct_corruption_alarm": [],
-        "corruption_not_detected_yet": [],
-        "fraction_data_cleaned": [],
-        "model_score": []
-    }
-    # TODO: Inline for
-    for iteration in range(num_iterations):
-        print(f"Starting iteration {iteration} now...")
-        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_opt(corrupted_row_ids,
-                                                                                                use_shapley_weighting,
-                                                                                                shapley_value_k,
-                                                                                                cleaning_batch_size,
-                                                                                                do_model_train_and_score)
-        iteration_results["iteration"].append(iteration)
-        iteration_results["already_cleaned_rows"].append(iteration_info["already_cleaned_rows"])
-        iteration_results["total_corrupted_rows"].append(iteration_info["total_corrupted_rows"])
-        iteration_results["false_corruption_alarm"].append(iteration_info["false_corruption_alarm"])
-        iteration_results["correct_corruption_alarm"].append(iteration_info["correct_corruption_alarm"])
-        iteration_results["corruption_not_detected_yet"].append(iteration_info["corruption_not_detected_yet"])
-        iteration_results["fraction_data_cleaned"].append(iteration_info["fraction_data_cleaned"])
-        iteration_results["model_score"].append(iteration_info["model_score"])
+
+    iteration_results = execute_image_pipeline_w_shapley_opt(corrupted_row_ids,
+                                                             use_shapley_weighting,
+                                                             shapley_value_k,
+                                                             cleaning_batch_size,
+                                                             do_model_train_and_score,
+                                                             num_iterations)
 
     print("Done!")
     return pd.DataFrame(iteration_results)
@@ -230,24 +256,13 @@ def do_shapley_value_opt(corruption_fraction, num_iterations, use_shapley_weight
 def measure_shapley_opt_exec_time(corruption_fraction, num_iterations, use_shapley_weighting, shapley_value_k,
                                   cleaning_batch_size, do_model_train_and_score, repeats=10):
     result = timeit.repeat(stmt=cleandoc(f"""
-    for iteration in range({num_iterations}):
-        print(f"Starting iteration {{iteration}} now...")
-        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_opt(corrupted_row_ids,
-                                                                                            {use_shapley_weighting},
-                                                                                            {shapley_value_k},
-                                                                                            {cleaning_batch_size},
-                                                                                            {do_model_train_and_score})
-        iteration_results["iteration"].append(iteration)
-        iteration_results["already_cleaned_rows"].append(iteration_info["already_cleaned_rows"])
-        iteration_results["total_corrupted_rows"].append(iteration_info["total_corrupted_rows"])
-        iteration_results["false_corruption_alarm"].append(iteration_info["false_corruption_alarm"])
-        iteration_results["correct_corruption_alarm"].append(iteration_info["correct_corruption_alarm"])
-        iteration_results["corruption_not_detected_yet"].append(iteration_info["corruption_not_detected_yet"])
-        iteration_results["fraction_data_cleaned"].append(iteration_info["fraction_data_cleaned"])
-        iteration_results["model_score"].append(iteration_info["model_score"])
-
+    iteration_results = execute_image_pipeline_w_shapley_opt(corrupted_row_ids,
+                                                            {use_shapley_weighting},
+                                                            {shapley_value_k},
+                                                            {cleaning_batch_size},
+                                                            {do_model_train_and_score},
+                                                            {num_iterations})
     print("Done!")
-    
     """),
                            setup=cleandoc(f"""
     from whatif.example_pipelines.product_images_shapley_naive import create_corrupt_data
@@ -255,17 +270,9 @@ def measure_shapley_opt_exec_time(corruption_fraction, num_iterations, use_shapl
     import pandas as pd
     
     corrupted_row_ids = create_corrupt_data({corruption_fraction})
-    
-    iteration_results = {{
-        "iteration": [],
-        "already_cleaned_rows": [],
-        "total_corrupted_rows": [],
-        "false_corruption_alarm": [],
-        "correct_corruption_alarm": [],
-        "corruption_not_detected_yet": [],
-        "fraction_data_cleaned": [],
-        "model_score": []
-    }}
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
+
+
+do_shapley_value_opt(0.5, 10, True, 10, 50, True)

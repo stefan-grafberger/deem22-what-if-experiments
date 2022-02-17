@@ -17,7 +17,7 @@ from whatif.utils.utils import get_project_root
 
 
 def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, label_corrections: pd.DataFrame,
-                                           total_updates: int, shapley_value_cleaning=True, shapley_value_k=10,
+                                           shapley_value_cleaning=True, shapley_value_k=10,
                                            cleaning_batch_size=50, do_model_train_and_score=True):
     def decode_image(img_str):
         return np.array([int(val) for val in img_str.split(':')])
@@ -98,10 +98,10 @@ def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, labe
     # print(model_score)
 
     cleaning_results = do_shapley_value_cleaning_naive(corrupted_row_ids, image_lineage_ids, label_corrections,
-                                                       shapley_value_cleaning, total_updates, train, x_test, x_train,
+                                                       shapley_value_cleaning, train, x_test, x_train,
                                                        y_test,
                                                        y_train, shapley_value_k, cleaning_batch_size)
-    label_corrections, total_updates, iteration_info = cleaning_results
+    label_corrections, iteration_info = cleaning_results
     iteration_info['model_score'] = model_score
     return cleaning_results
 
@@ -132,7 +132,7 @@ def enable_fact_table_row_tracking_naive(train_data):
 
 
 def do_shapley_value_cleaning_naive(corrupted_row_ids, image_lineage_ids, label_corrections, shapley_value_cleaning,
-                                    total_updates, train, x_test, x_train, y_test, y_train, shapley_value_k,
+                                    train, x_test, x_train, y_test, y_train, shapley_value_k,
                                     cleaning_batch_size):
     iteration_info = {}
     shapley_values = _data_valuation._compute_shapley_values(x_train,
@@ -184,11 +184,11 @@ def do_shapley_value_cleaning_naive(corrupted_row_ids, image_lineage_ids, label_
     label_corrections = pd.concat([label_corrections, new_label_corrections])
     label_corrections['image_lineage_id'] = label_corrections['image_lineage_id'].astype(int)
     label_corrections['category_id'] = label_corrections['category_id'].astype(int)
-    total_updates += correct_corruption_alarm
-    fraction_data_cleaned = total_updates / total_corrupted_rows
+    already_cleaned_rows += correct_corruption_alarm
+    fraction_data_cleaned = already_cleaned_rows / total_corrupted_rows
     iteration_info["fraction_data_cleaned"] = fraction_data_cleaned
 
-    return label_corrections, total_updates, iteration_info
+    return label_corrections, iteration_info
 
 
 def create_corrupt_data(corruption_fraction=0.5):
@@ -237,7 +237,6 @@ def do_shapley_value_naive(corruption_fraction, num_iterations, use_shapley_weig
                            cleaning_batch_size, do_model_train_and_score):
     corrupted_row_ids = create_corrupt_data(corruption_fraction)
     label_corrections = pd.DataFrame({'image_lineage_id': [], "category_id": []})
-    total_updates = 0
     iteration_results = {
         "iteration": [],
         "already_cleaned_rows": [],
@@ -252,7 +251,6 @@ def do_shapley_value_naive(corruption_fraction, num_iterations, use_shapley_weig
         print(f"Starting iteration {iteration} now...")
         label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_naive(corrupted_row_ids,
                                                                                                   label_corrections,
-                                                                                                  total_updates,
                                                                                                   use_shapley_weighting,
                                                                                                   shapley_value_k,
                                                                                                   cleaning_batch_size)
