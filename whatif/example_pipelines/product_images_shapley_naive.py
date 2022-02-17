@@ -284,13 +284,12 @@ def measure_shapley_naive_exec_time(corruption_fraction, num_iterations, use_sha
     result = timeit.repeat(stmt=cleandoc(f"""
     for iteration in range({num_iterations}):
         print(f"Starting iteration {{iteration}} now...")
-        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_naive(corrupted_row_ids,
-                                                                                            label_corrections,
-                                                                                            total_updates,
-                                                                                            {use_shapley_weighting},
-                                                                                            {shapley_value_k},
-                                                                                            {cleaning_batch_size},
-                                                                                            {do_model_train_and_score})
+        label_corrections, iteration_info = execute_image_pipeline_w_shapley_naive(corrupted_row_ids,
+                                                                                   label_corrections,
+                                                                                   {use_shapley_weighting},
+                                                                                   {shapley_value_k},
+                                                                                   {cleaning_batch_size},
+                                                                                   {do_model_train_and_score})
         iteration_results["iteration"].append(iteration)
         iteration_results["already_cleaned_rows"].append(iteration_info["already_cleaned_rows"])
         iteration_results["total_corrupted_rows"].append(iteration_info["total_corrupted_rows"])
