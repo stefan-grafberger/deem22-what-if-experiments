@@ -86,7 +86,8 @@ def execute_image_pipeline_w_shapley_naive(corrupted_row_ids: pd.DataFrame, labe
 
     image_lineage_ids = save_row_tracking_information_naive(train)
 
-    x_train = pipeline_without_model.fit_transform(train[['image']])  # beide varianten mal ausprobieren, unklar was fair
+    x_train = pipeline_without_model.fit_transform(
+        train[['image']])  # beide varianten mal ausprobieren, unklar was fair
     x_test = pipeline_without_model.transform(test[['image']])
 
     if do_model_train_and_score:
@@ -249,11 +250,11 @@ def do_shapley_value_naive(corruption_fraction, num_iterations, use_shapley_weig
     }
     for iteration in range(num_iterations):
         print(f"Starting iteration {iteration} now...")
-        label_corrections, total_updates, iteration_info = execute_image_pipeline_w_shapley_naive(corrupted_row_ids,
-                                                                                                  label_corrections,
-                                                                                                  use_shapley_weighting,
-                                                                                                  shapley_value_k,
-                                                                                                  cleaning_batch_size)
+        label_corrections, iteration_info = execute_image_pipeline_w_shapley_naive(corrupted_row_ids,
+                                                                                   label_corrections,
+                                                                                   use_shapley_weighting,
+                                                                                   shapley_value_k,
+                                                                                   cleaning_batch_size)
         iteration_results["iteration"].append(iteration)
         iteration_results["already_cleaned_rows"].append(iteration_info["already_cleaned_rows"])
         iteration_results["total_corrupted_rows"].append(iteration_info["total_corrupted_rows"])
