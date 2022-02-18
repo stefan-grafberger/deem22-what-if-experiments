@@ -1,6 +1,7 @@
 import pandas as pd
 import sys
 
+from sklearn.metrics import f1_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder, label_binarize, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import SGDClassifier
@@ -77,6 +78,10 @@ def execute_review_pipeline():
 
     model = pipeline.fit(train_data, train_labels)
 
-    score = model.score(test_data, test_labels)
 
-    print(f'Accuracy on the test set: {score}')
+    test_predict = model.predict(test_data)
+    score = roc_auc_score(test_predict, test_labels)
+
+    print(f'F1 Score on the test set: {score}')
+
+execute_review_pipeline()
