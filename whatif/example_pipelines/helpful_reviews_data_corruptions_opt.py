@@ -17,7 +17,16 @@ from sklearn.pipeline import Pipeline
 from whatif.utils.utils import get_project_root
 
 
-def execute_review_pipeline_opt(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature, debug):
+def execute_review_pipeline_opt(debug, corruption_percentages, corrupt_features):
+    iteration_results = {
+        "test_corruption": [],
+        "train_corruption": [],
+        "corruption_fraction": [],
+        "feature": [],
+        "roc_auc": [],
+        "f1": []
+    }
+
     target_categories = ['Digital_Video_Games']
     split_date = '2015-07-31'
     start_date = '2015-01-01'
@@ -94,7 +103,7 @@ def execute_review_pipeline_opt(corrupt_train, corrupt_test, corruption_fraction
     if debug is True:
         print(f'F1 Score on the test set: {scores["f1"]}')
 
-    return scores
+    return pd.DataFrame(iteration_results)
 
 
 def corrupt_data(data, corruption_fraction, corrupt_feature):
@@ -180,7 +189,7 @@ def measure_review_corruption_opt_exec_time(debug, corruption_percentages, corru
             if {debug} is True:
                 print("Corruptions in Train and test")
             execute_review_pipeline_opt(True, True, corruption_fraction, corrupt_feature, {debug})
-
+    print("Done!")
     """),
                            setup=cleandoc(f"""
     from whatif.example_pipelines.helpful_reviews_data_corruptions_opt import execute_review_pipeline_opt

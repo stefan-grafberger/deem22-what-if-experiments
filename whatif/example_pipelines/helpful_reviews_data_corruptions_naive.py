@@ -45,11 +45,6 @@ def execute_review_pipeline_naive(corrupt_train, corrupt_test, corruption_fracti
     train_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date <= split_date].copy()
     test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date].copy()
 
-    if corrupt_train is True:
-        train_data = corrupt_data(train_data, corruption_fraction, corrupt_feature)
-    if corrupt_test is True:
-        test_data = corrupt_data(test_data, corruption_fraction, corrupt_feature)
-
     train_data['product_title'] = train_data['product_title'].fillna(value='')
     test_data['product_title'] = test_data['product_title'].fillna(value='')
 
@@ -93,6 +88,25 @@ def execute_review_pipeline_naive(corrupt_train, corrupt_test, corruption_fracti
     scores['f1'] = f1_score(test_predict, test_labels, average='macro')
     if debug is True:
         print(f'F1 Score on the test set: {scores["f1"]}')
+
+    # TODO: We need to execute the normal pipeline once always
+    # Afterward, we can first corrupt the test data and use the trained model
+    # Then, we can apply corruptions. For this, get columns vectors for all columns used by the model
+    # For some, we can use the transformed variation and then apply the corruption directly to the
+    # already transformed feature. If we cant to this for some features, use the untransformed variant of that feature
+    # "inline" the data corruption code so we can first corrupt everything and do the sampling from the two sides
+    # afterwards. Maybe we can even build one df with all train columns, all corrupted columns, and then add
+    # three columns: corrupted 20, 50, and 90. then a simple filter on this column is enough to decide which version
+    # of a corrupted column to use for each use case. afterward, get the corresponding columns or, if it isnt in a df
+    # format, use a numpy stack to build the train data from these.
+    # TODO: Think about how to apply corruption to transformed features depending on the transformer used for
+    #  featurization.
+    # TODO: Maybe it is beneficial to remove the column transformer from the pipeline, apply transformers and concat in
+    #  the end manually
+    if corrupt_train is True:
+        train_data = corrupt_data(train_data, corruption_fraction, corrupt_feature)
+    if corrupt_test is True:
+        test_data = corrupt_data(test_data, corruption_fraction, corrupt_feature)
 
     return scores
 
@@ -179,7 +193,7 @@ def measure_review_corruption_naive_exec_time(debug, corruption_percentages, cor
             if {debug} is True:
                 print("Corruptions in Train and test")
             execute_review_pipeline_naive(True, True, corruption_fraction, corrupt_feature, {debug})
-
+    print("Done!")
     """),
                            setup=cleandoc(f"""
     from whatif.example_pipelines.helpful_reviews_data_corruptions_naive import execute_review_pipeline_naive
