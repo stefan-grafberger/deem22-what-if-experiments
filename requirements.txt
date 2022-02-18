@@ -7,3 +7,4 @@ numba==0.53
 # icc-rt==2020.0.133
 pyyaml==5.4.1
 pyarrow==4.0.1
+jenga==0.0.1a1
