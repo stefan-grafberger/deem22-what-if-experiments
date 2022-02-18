@@ -82,6 +82,6 @@ def execute_review_pipeline():
     test_predict = model.predict(test_data)
     score = roc_auc_score(test_predict, test_labels)
 
-    print(f'F1 Score on the test set: {score}')
+    print(f'AUC Score on the test set: {score}')
 
 execute_review_pipeline()

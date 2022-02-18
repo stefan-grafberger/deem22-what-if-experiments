@@ -83,8 +83,8 @@ def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction):
     model = pipeline.fit(train_data, train_labels)
     test_predict = model.predict(test_data)
     # Potential error with corruptions: Only one class present in y_true
-    # score = roc_auc_score(test_predict, test_labels)
-    # print(f'AUC Score on the test set: {score}')
+    score = roc_auc_score(test_predict, test_labels)
+    print(f'AUC Score on the test set: {score}')
     score = f1_score(test_predict, test_labels, average='macro')
     print(f'F1 Score on the test set: {score}')
 
@@ -119,8 +119,8 @@ def corrupt_data(data, corruption_fraction):
     return data
 
 print("No corruptions")
-execute_review_pipeline(False, False, 0.9)
+execute_review_pipeline(False, False, 0.5)
 print("Corruptions in Test")
-execute_review_pipeline(False, True, 0.9)
+execute_review_pipeline(False, True, 0.5)
 print("Corruptions in Train and test")
-execute_review_pipeline(True, True, 0.9)
+execute_review_pipeline(True, True, 0.5)
