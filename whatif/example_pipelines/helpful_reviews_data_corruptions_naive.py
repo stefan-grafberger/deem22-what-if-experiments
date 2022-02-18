@@ -17,7 +17,7 @@ from sklearn.pipeline import Pipeline
 from whatif.utils.utils import get_project_root
 
 
-def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature_num, debug):
+def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature, debug):
     target_categories = ['Digital_Video_Games']
     split_date = '2015-07-31'
     start_date = '2015-01-01'
@@ -46,9 +46,9 @@ def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, co
     test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date].copy()
 
     if corrupt_train is True:
-        train_data = corrupt_data(train_data, corruption_fraction, corrupt_feature_num)
+        train_data = corrupt_data(train_data, corruption_fraction, corrupt_feature)
     if corrupt_test is True:
-        test_data = corrupt_data(test_data, corruption_fraction, corrupt_feature_num)
+        test_data = corrupt_data(test_data, corruption_fraction, corrupt_feature)
 
     train_data['product_title'] = train_data['product_title'].fillna(value='')
     test_data['product_title'] = test_data['product_title'].fillna(value='')
@@ -97,87 +97,89 @@ def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, co
     return scores
 
 
-def corrupt_data(data, corruption_fraction, corrupt_feature_num):
+def corrupt_data(data, corruption_fraction, corrupt_feature):
     # Data corruptions, later: test them one by one
-    if corrupt_feature_num == 0:
+    if corrupt_feature == "vine":
         data = CategoricalShift(column='vine', fraction=corruption_fraction).transform(data)
-    elif corrupt_feature_num == 1:
+    elif corrupt_feature == "verified_purchase":
         data = CategoricalShift(column='verified_purchase', fraction=corruption_fraction).transform(data)
-    elif corrupt_feature_num == 2:
+    elif corrupt_feature == "category_id":
         data['category_id'] = data['category_id'].astype(str)  # CategoricalShift implemented only for categorical variables
         data = CategoricalShift(column='category_id', fraction=corruption_fraction).transform(data)
         data['category_id'] = data['category_id'].astype(int)
-    elif corrupt_feature_num == 3:
+    elif corrupt_feature == "star_rating":
         data = Scaling(column='star_rating', fraction=corruption_fraction).transform(data)
-    elif corrupt_feature_num == 4:
+    elif corrupt_feature == "product_title":
         data = BrokenCharacters(column='product_title', fraction=corruption_fraction).transform(data)
-    elif corrupt_feature_num == 5:
+    elif corrupt_feature == "review_headline":
         data = BrokenCharacters(column='review_headline', fraction=corruption_fraction).transform(data)
-    elif corrupt_feature_num == 6:
+    elif corrupt_feature == "review_body":
         data = MissingValues(column='review_body', fraction=corruption_fraction).transform(data)
+    else:
+        assert(False)
 
     return data
 
 
-def do_review_corruption_naive(debug, corruption_percentages):
+def do_review_corruption_naive(debug, corruption_percentages, corrupt_features):
     iteration_results = {
         "test_corruption": [],
         "train_corruption": [],
         "corruption_fraction": [],
-        "feature_num": [],
+        "feature": [],
         "roc_auc": [],
         "f1": []
     }
     if debug is True:
         print("No corruptions")
-    scores = execute_review_pipeline(False, False, 0.0, 0, debug)
+    scores = execute_review_pipeline(False, False, 0.0, None, debug)
     iteration_results["test_corruption"].append(False)
     iteration_results["train_corruption"].append(False)
     iteration_results["corruption_fraction"].append(None)
-    iteration_results["feature_num"].append(None)
+    iteration_results["feature"].append(None)
     iteration_results["roc_auc"].append(scores["roc_auc"])
     iteration_results["f1"].append(scores["f1"])
-    for feature_num in range(7):
+    for corrupt_feature in corrupt_features:
         for corruption_fraction in corruption_percentages:
             if debug is True:
                 print("____")
-                print(f"Now testing corruption of {corruption_fraction*100}% of feature {feature_num}")
+                print(f"Now testing corruption of {corruption_fraction*100}% of feature {corrupt_feature}")
                 print("Corruptions in Test")
-            scores = execute_review_pipeline(False, True, corruption_fraction, feature_num, debug)
+            scores = execute_review_pipeline(False, True, corruption_fraction, corrupt_feature, debug)
             iteration_results["test_corruption"].append(False)
             iteration_results["train_corruption"].append(True)
             iteration_results["corruption_fraction"].append(corruption_fraction)
-            iteration_results["feature_num"].append(feature_num)
+            iteration_results["feature"].append(corrupt_feature)
             iteration_results["roc_auc"].append(scores["roc_auc"])
             iteration_results["f1"].append(scores["f1"])
             if debug is True:
                 print("Corruptions in Train and test")
-            execute_review_pipeline(True, True, corruption_fraction, feature_num, debug)
-            scores = execute_review_pipeline(False, True, corruption_fraction, feature_num, debug)
+            execute_review_pipeline(True, True, corruption_fraction, corrupt_feature, debug)
+            scores = execute_review_pipeline(False, True, corruption_fraction, corrupt_feature, debug)
             iteration_results["test_corruption"].append(True)
             iteration_results["train_corruption"].append(True)
             iteration_results["corruption_fraction"].append(corruption_fraction)
-            iteration_results["feature_num"].append(feature_num)
+            iteration_results["feature"].append(corrupt_feature)
             iteration_results["roc_auc"].append(scores["roc_auc"])
             iteration_results["f1"].append(scores["f1"])
     return pd.DataFrame(iteration_results)
 
 
-def measure_review_corruption_naive_exec_time(debug, corruption_percentages, repeats=10):
+def measure_review_corruption_naive_exec_time(debug, corruption_percentages, corrupt_features, repeats=10):
     result = timeit.repeat(stmt=cleandoc(f"""
     if {debug} is True:
         print("No corruptions")
     execute_review_pipeline(False, False, 0.0, 0, {debug})
-    for feature_num in range(7):
+    for corrupt_feature in {corrupt_features}:
         for corruption_fraction in {corruption_percentages}:
             if {debug} is True:
                 print("____")
-                print(f"Now testing corruption of {{corruption_fraction*100}}% of feature {{feature_num}}")
+                print(f"Now testing corruption of {{corruption_fraction*100}}% of feature {{corrupt_feature}}")
                 print("Corruptions in Test")
-            execute_review_pipeline(False, True, corruption_fraction, feature_num, {debug})
+            execute_review_pipeline(False, True, corruption_fraction, corrupt_feature, {debug})
             if {debug} is True:
                 print("Corruptions in Train and test")
-            execute_review_pipeline(True, True, corruption_fraction, feature_num, {debug})
+            execute_review_pipeline(True, True, corruption_fraction, corrupt_feature, {debug})
 
     """),
                            setup=cleandoc(f"""
@@ -185,3 +187,12 @@ def measure_review_corruption_naive_exec_time(debug, corruption_percentages, rep
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
+
+
+# do_review_corruption_naive(debug=True, corruption_percentages=[0.5, 0.9],
+#                            corrupt_features=["star_rating", "verified_purchase", "review_headline"])
+
+# measure_review_corruption_naive_exec_time(debug=True, corruption_percentages=[0.5, 0.9],
+#                                           corrupt_features=["star_rating", "verified_purchase", "review_headline"],
+#                                           repeats=2)
+
