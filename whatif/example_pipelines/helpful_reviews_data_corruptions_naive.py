@@ -17,7 +17,7 @@ from sklearn.pipeline import Pipeline
 from whatif.utils.utils import get_project_root
 
 
-def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature, debug):
+def execute_review_pipeline_naive(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature, debug):
     target_categories = ['Digital_Video_Games']
     split_date = '2015-07-31'
     start_date = '2015-01-01'
@@ -132,7 +132,7 @@ def do_review_corruption_naive(debug, corruption_percentages, corrupt_features):
     }
     if debug is True:
         print("No corruptions")
-    scores = execute_review_pipeline(False, False, 0.0, None, debug)
+    scores = execute_review_pipeline_naive(False, False, 0.0, None, debug)
     iteration_results["test_corruption"].append(False)
     iteration_results["train_corruption"].append(False)
     iteration_results["corruption_fraction"].append(None)
@@ -145,7 +145,7 @@ def do_review_corruption_naive(debug, corruption_percentages, corrupt_features):
                 print("____")
                 print(f"Now testing corruption of {corruption_fraction*100}% of feature {corrupt_feature}")
                 print("Corruptions in Test")
-            scores = execute_review_pipeline(False, True, corruption_fraction, corrupt_feature, debug)
+            scores = execute_review_pipeline_naive(False, True, corruption_fraction, corrupt_feature, debug)
             iteration_results["test_corruption"].append(False)
             iteration_results["train_corruption"].append(True)
             iteration_results["corruption_fraction"].append(corruption_fraction)
@@ -154,8 +154,7 @@ def do_review_corruption_naive(debug, corruption_percentages, corrupt_features):
             iteration_results["f1"].append(scores["f1"])
             if debug is True:
                 print("Corruptions in Train and test")
-            execute_review_pipeline(True, True, corruption_fraction, corrupt_feature, debug)
-            scores = execute_review_pipeline(False, True, corruption_fraction, corrupt_feature, debug)
+            scores = execute_review_pipeline_naive(True, True, corruption_fraction, corrupt_feature, debug)
             iteration_results["test_corruption"].append(True)
             iteration_results["train_corruption"].append(True)
             iteration_results["corruption_fraction"].append(corruption_fraction)
@@ -169,21 +168,21 @@ def measure_review_corruption_naive_exec_time(debug, corruption_percentages, cor
     result = timeit.repeat(stmt=cleandoc(f"""
     if {debug} is True:
         print("No corruptions")
-    execute_review_pipeline(False, False, 0.0, 0, {debug})
+    execute_review_pipeline_naive(False, False, 0.0, 0, {debug})
     for corrupt_feature in {corrupt_features}:
         for corruption_fraction in {corruption_percentages}:
             if {debug} is True:
                 print("____")
                 print(f"Now testing corruption of {{corruption_fraction*100}}% of feature {{corrupt_feature}}")
                 print("Corruptions in Test")
-            execute_review_pipeline(False, True, corruption_fraction, corrupt_feature, {debug})
+            execute_review_pipeline_naive(False, True, corruption_fraction, corrupt_feature, {debug})
             if {debug} is True:
                 print("Corruptions in Train and test")
-            execute_review_pipeline(True, True, corruption_fraction, corrupt_feature, {debug})
+            execute_review_pipeline_naive(True, True, corruption_fraction, corrupt_feature, {debug})
 
     """),
                            setup=cleandoc(f"""
-    from whatif.example_pipelines.helpful_reviews_data_corruptions_naive import execute_review_pipeline
+    from whatif.example_pipelines.helpful_reviews_data_corruptions_naive import execute_review_pipeline_naive
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
