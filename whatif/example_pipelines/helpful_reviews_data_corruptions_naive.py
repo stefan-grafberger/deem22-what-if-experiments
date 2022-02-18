@@ -1,3 +1,6 @@
+import timeit
+from inspect import cleandoc
+
 import pandas as pd
 
 from jenga.corruptions.generic import CategoricalShift, MissingValues
@@ -14,7 +17,7 @@ from sklearn.pipeline import Pipeline
 from whatif.utils.utils import get_project_root
 
 
-def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature_num):
+def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature_num, debug):
     target_categories = ['Digital_Video_Games']
     split_date = '2015-07-31'
     start_date = '2015-01-01'
@@ -83,12 +86,15 @@ def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, co
     model = pipeline.fit(train_data, train_labels.ravel())
     test_predict = model.predict(test_data)
     # Potential error with corruptions: Only one class present in y_true
-    score = roc_auc_score(test_predict, test_labels)
-    print(f'AUC Score on the test set: {score}')
-    score = f1_score(test_predict, test_labels, average='macro')
-    print(f'F1 Score on the test set: {score}')
+    scores = {}
+    scores['roc_auc'] = roc_auc_score(test_predict, test_labels)
+    if debug is True:
+        print(f'AUC Score on the test set: {scores["roc_auc"]}')
+    scores['f1'] = f1_score(test_predict, test_labels, average='macro')
+    if debug is True:
+        print(f'F1 Score on the test set: {scores["f1"]}')
 
-    return score
+    return scores
 
 
 def corrupt_data(data, corruption_fraction, corrupt_feature_num):
@@ -113,13 +119,69 @@ def corrupt_data(data, corruption_fraction, corrupt_feature_num):
     return data
 
 
-print("No corruptions")
-execute_review_pipeline(False, False, 0.5, 5)
-for feature_num in range(7):
-    for corruption_fraction in [0.1, 0.2, 0.5]:
-        print("____")
-        print(f"Now testing corruption of {corruption_fraction*100}% of feature {feature_num}")
-        print("Corruptions in Test")
-        execute_review_pipeline(False, True, corruption_fraction, 5)
-        print("Corruptions in Train and test")
-        execute_review_pipeline(True, True, corruption_fraction, 5)
+def do_review_corruption_naive(debug, corruption_percentages):
+    iteration_results = {
+        "test_corruption": [],
+        "train_corruption": [],
+        "corruption_fraction": [],
+        "feature_num": [],
+        "roc_auc": [],
+        "f1": []
+    }
+    if debug is True:
+        print("No corruptions")
+    scores = execute_review_pipeline(False, False, 0.0, 0, debug)
+    iteration_results["test_corruption"].append(False)
+    iteration_results["train_corruption"].append(False)
+    iteration_results["corruption_fraction"].append(None)
+    iteration_results["feature_num"].append(None)
+    iteration_results["roc_auc"].append(scores["roc_auc"])
+    iteration_results["f1"].append(scores["f1"])
+    for feature_num in range(7):
+        for corruption_fraction in corruption_percentages:
+            if debug is True:
+                print("____")
+                print(f"Now testing corruption of {corruption_fraction*100}% of feature {feature_num}")
+                print("Corruptions in Test")
+            scores = execute_review_pipeline(False, True, corruption_fraction, feature_num, debug)
+            iteration_results["test_corruption"].append(False)
+            iteration_results["train_corruption"].append(True)
+            iteration_results["corruption_fraction"].append(corruption_fraction)
+            iteration_results["feature_num"].append(feature_num)
+            iteration_results["roc_auc"].append(scores["roc_auc"])
+            iteration_results["f1"].append(scores["f1"])
+            if debug is True:
+                print("Corruptions in Train and test")
+            execute_review_pipeline(True, True, corruption_fraction, feature_num, debug)
+            scores = execute_review_pipeline(False, True, corruption_fraction, feature_num, debug)
+            iteration_results["test_corruption"].append(True)
+            iteration_results["train_corruption"].append(True)
+            iteration_results["corruption_fraction"].append(corruption_fraction)
+            iteration_results["feature_num"].append(feature_num)
+            iteration_results["roc_auc"].append(scores["roc_auc"])
+            iteration_results["f1"].append(scores["f1"])
+    return pd.DataFrame(iteration_results)
+
+
+def measure_review_corruption_naive_exec_time(debug, corruption_percentages, repeats=10):
+    result = timeit.repeat(stmt=cleandoc(f"""
+    if {debug} is True:
+        print("No corruptions")
+    execute_review_pipeline(False, False, 0.0, 0, {debug})
+    for feature_num in range(7):
+        for corruption_fraction in {corruption_percentages}:
+            if {debug} is True:
+                print("____")
+                print(f"Now testing corruption of {{corruption_fraction*100}}% of feature {{feature_num}}")
+                print("Corruptions in Test")
+            execute_review_pipeline(False, True, corruption_fraction, feature_num, {debug})
+            if {debug} is True:
+                print("Corruptions in Train and test")
+            execute_review_pipeline(True, True, corruption_fraction, feature_num, {debug})
+
+    """),
+                           setup=cleandoc(f"""
+    from whatif.example_pipelines.helpful_reviews_data_corruptions_naive import execute_review_pipeline
+    """),
+                           repeat=repeats, number=1)
+    return pd.DataFrame({"runtimes": result})
