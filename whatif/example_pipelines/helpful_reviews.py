@@ -55,11 +55,11 @@ def execute_review_pipeline():
         reviews_with_products_and_ratings.review_headline + ' ' + \
         reviews_with_products_and_ratings.review_body
 
-    train_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date <= split_date]
+    train_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date <= split_date].copy()
     train_data['is_helpful'] = train_data['helpful_votes'] > 0
     train_labels = label_binarize(train_data['is_helpful'], classes=[True, False])
 
-    test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date]
+    test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date].copy()
     test_data['is_helpful'] = test_data['helpful_votes'] > 0
     test_labels = label_binarize(test_data['is_helpful'], classes=[True, False])
 
@@ -74,14 +74,16 @@ def execute_review_pipeline():
 
     pipeline = Pipeline([
         ('features', feature_transformation),
-        ('learner', SGDClassifier(loss='log', penalty='l1', max_iter=1000))])
+        ('learner', SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced"))])
 
-    model = pipeline.fit(train_data, train_labels)
-
+    model = pipeline.fit(train_data, train_labels.ravel())
 
     test_predict = model.predict(test_data)
-    score = roc_auc_score(test_predict, test_labels)
 
+    score = roc_auc_score(test_predict, test_labels, average='macro')
     print(f'AUC Score on the test set: {score}')
+    score = f1_score(test_predict, test_labels, average='macro')
+    print(f'F1 Score on the test set: {score}')
+
 
 execute_review_pipeline()

@@ -14,7 +14,7 @@ from sklearn.pipeline import Pipeline
 from whatif.utils.utils import get_project_root
 
 
-def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction):
+def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction, corrupt_feature_num):
     target_categories = ['Digital_Video_Games']
     split_date = '2015-07-31'
     start_date = '2015-01-01'
@@ -43,9 +43,9 @@ def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction):
     test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date].copy()
 
     if corrupt_train is True:
-        train_data = corrupt_data(train_data, corruption_fraction)
+        train_data = corrupt_data(train_data, corruption_fraction, corrupt_feature_num)
     if corrupt_test is True:
-        test_data = corrupt_data(test_data, corruption_fraction)
+        test_data = corrupt_data(test_data, corruption_fraction, corrupt_feature_num)
 
     train_data['product_title'] = train_data['product_title'].fillna(value='')
     test_data['product_title'] = test_data['product_title'].fillna(value='')
@@ -78,9 +78,9 @@ def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction):
 
     pipeline = Pipeline([
         ('features', feature_transformation),
-        ('learner', SGDClassifier(loss='log', penalty='l1', max_iter=1000))])
+        ('learner', SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced"))])
 
-    model = pipeline.fit(train_data, train_labels)
+    model = pipeline.fit(train_data, train_labels.ravel())
     test_predict = model.predict(test_data)
     # Potential error with corruptions: Only one class present in y_true
     score = roc_auc_score(test_predict, test_labels)
@@ -91,36 +91,35 @@ def execute_review_pipeline(corrupt_train, corrupt_test, corruption_fraction):
     return score
 
 
-def corrupt_data(data, corruption_fraction):
+def corrupt_data(data, corruption_fraction, corrupt_feature_num):
     # Data corruptions, later: test them one by one
-    print("Corrupting vine...")
-    data = CategoricalShift(column='vine', fraction=corruption_fraction).transform(data)
-
-    print("Corrupting verified_purchase...")
-    data = CategoricalShift(column='verified_purchase', fraction=corruption_fraction).transform(data)
-
-    print("Corrupting category_id...")
-    data['category_id'] = data['category_id'].astype(str)  # CategoricalShift implemented only for categorical variables
-    data = CategoricalShift(column='category_id', fraction=corruption_fraction).transform(data)
-    data['category_id'] = data['category_id'].astype(int)
-
-    print("Corrupting star_rating...")
-    data = Scaling(column='star_rating', fraction=corruption_fraction).transform(data)
-
-    print("Corrupting product_title...")
-    data = BrokenCharacters(column='product_title', fraction=corruption_fraction).transform(data)
-
-    print("Corrupting review_headline...")
-    data = BrokenCharacters(column='review_headline', fraction=corruption_fraction).transform(data)
-
-    print("Corrupting review_body...")
-    data = MissingValues(column='review_body', fraction=corruption_fraction).transform(data)
+    if corrupt_feature_num == 0:
+        data = CategoricalShift(column='vine', fraction=corruption_fraction).transform(data)
+    elif corrupt_feature_num == 1:
+        data = CategoricalShift(column='verified_purchase', fraction=corruption_fraction).transform(data)
+    elif corrupt_feature_num == 2:
+        data['category_id'] = data['category_id'].astype(str)  # CategoricalShift implemented only for categorical variables
+        data = CategoricalShift(column='category_id', fraction=corruption_fraction).transform(data)
+        data['category_id'] = data['category_id'].astype(int)
+    elif corrupt_feature_num == 3:
+        data = Scaling(column='star_rating', fraction=corruption_fraction).transform(data)
+    elif corrupt_feature_num == 4:
+        data = BrokenCharacters(column='product_title', fraction=corruption_fraction).transform(data)
+    elif corrupt_feature_num == 5:
+        data = BrokenCharacters(column='review_headline', fraction=corruption_fraction).transform(data)
+    elif corrupt_feature_num == 6:
+        data = MissingValues(column='review_body', fraction=corruption_fraction).transform(data)
 
     return data
 
+
 print("No corruptions")
-execute_review_pipeline(False, False, 0.5)
-print("Corruptions in Test")
-execute_review_pipeline(False, True, 0.5)
-print("Corruptions in Train and test")
-execute_review_pipeline(True, True, 0.5)
+execute_review_pipeline(False, False, 0.5, 5)
+for feature_num in range(7):
+    for corruption_fraction in [0.1, 0.2, 0.5]:
+        print("____")
+        print(f"Now testing corruption of {corruption_fraction*100}% of feature {feature_num}")
+        print("Corruptions in Test")
+        execute_review_pipeline(False, True, corruption_fraction, 5)
+        print("Corruptions in Train and test")
+        execute_review_pipeline(True, True, corruption_fraction, 5)
