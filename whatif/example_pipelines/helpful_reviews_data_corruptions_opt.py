@@ -175,6 +175,8 @@ def execute_review_pipeline_opt(debug):
     iteration_results["roc_auc"].append(scores["roc_auc"])
     iteration_results["f1"].append(scores["f1"])
 
+    # TODO: Can we only corrupt all data once and then sample from it to further share work across iterations?
+
     if debug is True:
         print("____")
         print(f"Now testing corruption of {{corruption_fraction * 100}}% of feature {{corrupt_feature}}")
