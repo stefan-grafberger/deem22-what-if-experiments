@@ -70,10 +70,10 @@ def execute_review_pipeline_opt(debug):
     test_data['review_body'] = test_data['review_body'].fillna(value='')
 
     train_data['is_helpful'] = train_data['helpful_votes'] > 0
-    train_labels = label_binarize(train_data['is_helpful'], classes=[True, False])
+    train_labels = label_binarize(train_data['is_helpful'], classes=[True, False]).ravel()
 
     test_data['is_helpful'] = test_data['helpful_votes'] > 0
-    test_labels = label_binarize(test_data['is_helpful'], classes=[True, False])
+    test_labels = label_binarize(test_data['is_helpful'], classes=[True, False]).ravel()
 
     star_rating_train = train_data[['star_rating']]
     star_rating_train_featurizer = StandardScaler()
@@ -124,7 +124,7 @@ def execute_review_pipeline_opt(debug):
 
     model_wo_corruptions = SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced")
 
-    model_wo_corruptions = model_wo_corruptions.fit(train_wo_corruptions, train_labels.ravel())
+    model_wo_corruptions = model_wo_corruptions.fit(train_wo_corruptions, train_labels)
     test_predict = model_wo_corruptions.predict(test_wo_corruptions)
     # Potential error with corruptions: Only one class present in y_true
     scores = {}
@@ -664,27 +664,15 @@ def corrupt_data(data, corruption_fraction, corrupt_feature):
     return data
 
 
-def do_review_corruption_opt(debug, corruption_percentages, corrupt_features):
+def do_review_corruption_opt(debug):
     # TODO: Make this general enough for the last 2 params to work? Prbbly not necessary
     iteration_results = execute_review_pipeline_opt(debug)
     return pd.DataFrame(iteration_results)
 
 
-def measure_review_corruption_opt_exec_time(debug, corruption_percentages, corrupt_features, repeats=10):
+def measure_review_corruption_opt_exec_time(debug, repeats=10):
     result = timeit.repeat(stmt=cleandoc(f"""
-    if {debug} is True:
-        print("No corruptions")
-    execute_review_pipeline_opt(False, False, 0.0, 0, {debug})
-    for corrupt_feature in {corrupt_features}:
-        for corruption_fraction in {corruption_percentages}:
-            if {debug} is True:
-                print("____")
-                print(f"Now testing corruption of {{corruption_fraction*100}}% of feature {{corrupt_feature}}")
-                print("Corruptions in Test")
-            execute_review_pipeline_opt(False, True, corruption_fraction, corrupt_feature, {debug})
-            if {debug} is True:
-                print("Corruptions in Train and test")
-            execute_review_pipeline_opt(True, True, corruption_fraction, corrupt_feature, {debug})
+    execute_review_pipeline_opt({debug})
     print("Done!")
     """),
                            setup=cleandoc(f"""
@@ -694,9 +682,6 @@ def measure_review_corruption_opt_exec_time(debug, corruption_percentages, corru
     return pd.DataFrame({"runtimes": result})
 
 
-do_review_corruption_opt(debug=True, corruption_percentages=[0.5, 0.9],
-                         corrupt_features=["star_rating", "verified_purchase", "review_headline"])
+# do_review_corruption_opt(debug=True)
 
-# measure_review_corruption_opt_exec_time(debug=True, corruption_percentages=[0.5, 0.9],
-#                                         corrupt_features=["star_rating", "verified_purchase", "review_headline"],
-#                                         repeats=2)
+# measure_review_corruption_opt_exec_time(debug=True, repeats=2)

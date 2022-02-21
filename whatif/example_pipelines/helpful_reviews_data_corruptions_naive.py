@@ -202,8 +202,8 @@ def measure_review_corruption_naive_exec_time(debug, corruption_percentages, cor
     return pd.DataFrame({"runtimes": result})
 
 
-do_review_corruption_naive(debug=True, corruption_percentages=[0.5, 0.9],
-                           corrupt_features=["star_rating", "verified_purchase", "review_headline"])
+# do_review_corruption_naive(debug=True, corruption_percentages=[0.5, 0.9],
+#                            corrupt_features=["star_rating", "verified_purchase", "review_headline"])
 
 # measure_review_corruption_naive_exec_time(debug=True, corruption_percentages=[0.5, 0.9],
 #                                           corrupt_features=["star_rating", "verified_purchase", "review_headline"],
