@@ -1,6 +1,5 @@
 import numpy as np
 
-from whatif.refinements import Refinement
 from whatif.templates import SourceType, Output
 
 
