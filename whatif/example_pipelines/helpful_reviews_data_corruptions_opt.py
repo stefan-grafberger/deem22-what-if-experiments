@@ -69,19 +69,11 @@ def execute_review_pipeline_opt(debug):
     train_data['review_body'] = train_data['review_body'].fillna(value='')
     test_data['review_body'] = test_data['review_body'].fillna(value='')
 
-    train_data['title_and_review_text'] = train_data.product_title + ' ' + train_data.review_headline + ' ' + \
-                                          train_data.review_body
-    test_data['title_and_review_text'] = test_data.product_title + ' ' + test_data.review_headline + ' ' + \
-                                         test_data.review_body
-
     train_data['is_helpful'] = train_data['helpful_votes'] > 0
     train_labels = label_binarize(train_data['is_helpful'], classes=[True, False])
 
     test_data['is_helpful'] = test_data['helpful_votes'] > 0
     test_labels = label_binarize(test_data['is_helpful'], classes=[True, False])
-
-    numerical_attributes = ['star_rating']
-    categorical_attributes = ['vine', 'verified_purchase', 'category_id']
 
     star_rating_train = train_data[['star_rating']]
     star_rating_train_featurizer = StandardScaler()
@@ -119,6 +111,8 @@ def execute_review_pipeline_opt(debug):
     title_and_review_text_test_featurized = title_and_review_text_train_featurizer \
         .transform(title_and_review_text_test).toarray()
 
+    if debug is True:
+        print("No corruptions")
 
     train_wo_corruptions = numpy.hstack([star_rating_train_featurized, vine_train_featurized,
                                              verified_purchase_train_featurized,
@@ -127,26 +121,10 @@ def execute_review_pipeline_opt(debug):
                                              verified_purchase_test_featurized,
                               category_id_test_featurized, title_and_review_text_test_featurized])
 
+    model_wo_corruptions = SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced")
 
-    train_data['title_and_review_text'] = train_data.product_title + ' ' + train_data.review_headline + ' ' + \
-                                          train_data.review_body
-    test_data['title_and_review_text'] = test_data.product_title + ' ' + test_data.review_headline + ' ' + \
-                                         test_data.review_body
-
-    pipeline_wo_model = ColumnTransformer(transformers=[
-        ('numerical_features', StandardScaler(), numerical_attributes),
-        ('categorical_features', OneHotEncoder(handle_unknown='ignore'), categorical_attributes),
-        ('textual_features', HashingVectorizer(ngram_range=(1, 3), n_features=100), 'title_and_review_text')
-    ])
-
-    model = SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced")
-
-    column_transformer_transformed_train = pipeline_wo_model.fit_transform(train_data, train_labels.ravel())
-    model = model.fit(column_transformer_transformed_train, train_labels.ravel())
-    column_transformer_transformed_test = pipeline_wo_model.transform(test_data)
-    test_predict = model.predict(column_transformer_transformed_test)
-    numpy.testing.assert_allclose(train_wo_corruptions, column_transformer_transformed_train, rtol=1e-5, atol=0)
-    numpy.testing.assert_allclose(test_wo_corruptions, column_transformer_transformed_test, rtol=1e-5, atol=0)
+    model_wo_corruptions = model_wo_corruptions.fit(train_wo_corruptions, train_labels.ravel())
+    test_predict = model_wo_corruptions.predict(test_wo_corruptions)
     # Potential error with corruptions: Only one class present in y_true
     scores = {}
     scores['roc_auc'] = roc_auc_score(test_predict, test_labels)
@@ -155,6 +133,20 @@ def execute_review_pipeline_opt(debug):
     scores['f1'] = f1_score(test_predict, test_labels, average='macro')
     if debug is True:
         print(f'F1 Score on the test set: {scores["f1"]}')
+
+    iteration_results["test_corruption"].append(False)
+    iteration_results["train_corruption"].append(False)
+    iteration_results["corruption_fraction"].append(None)
+    iteration_results["feature"].append(None)
+    iteration_results["roc_auc"].append(scores["roc_auc"])
+    iteration_results["f1"].append(scores["f1"])
+
+    if debug is True:
+        print("____")
+        print(f"Now testing corruption of {{corruption_fraction * 100}}% of feature {{corrupt_feature}}")
+        print("Corruptions in Test")
+
+
 
     return pd.DataFrame(iteration_results)
 
@@ -185,45 +177,8 @@ def corrupt_data(data, corruption_fraction, corrupt_feature):
 
 
 def do_review_corruption_opt(debug, corruption_percentages, corrupt_features):
-    iteration_results = {
-        "test_corruption": [],
-        "train_corruption": [],
-        "corruption_fraction": [],
-        "feature": [],
-        "roc_auc": [],
-        "f1": []
-    }
-    if debug is True:
-        print("No corruptions")
-    scores = execute_review_pipeline_opt(False)
-    iteration_results["test_corruption"].append(False)
-    iteration_results["train_corruption"].append(False)
-    iteration_results["corruption_fraction"].append(None)
-    iteration_results["feature"].append(None)
-    iteration_results["roc_auc"].append(scores["roc_auc"])
-    iteration_results["f1"].append(scores["f1"])
-    for corrupt_feature in corrupt_features:
-        for corruption_fraction in corruption_percentages:
-            if debug is True:
-                print("____")
-                print(f"Now testing corruption of {corruption_fraction * 100}% of feature {corrupt_feature}")
-                print("Corruptions in Test")
-            scores = execute_review_pipeline_opt(False)
-            iteration_results["test_corruption"].append(False)
-            iteration_results["train_corruption"].append(True)
-            iteration_results["corruption_fraction"].append(corruption_fraction)
-            iteration_results["feature"].append(corrupt_feature)
-            iteration_results["roc_auc"].append(scores["roc_auc"])
-            iteration_results["f1"].append(scores["f1"])
-            if debug is True:
-                print("Corruptions in Train and test")
-            scores = execute_review_pipeline_opt(True)
-            iteration_results["test_corruption"].append(True)
-            iteration_results["train_corruption"].append(True)
-            iteration_results["corruption_fraction"].append(corruption_fraction)
-            iteration_results["feature"].append(corrupt_feature)
-            iteration_results["roc_auc"].append(scores["roc_auc"])
-            iteration_results["f1"].append(scores["f1"])
+    # TODO: Make this general enough for the last 2 params to work? Prbbly not necessary
+    iteration_results = execute_review_pipeline_opt(debug)
     return pd.DataFrame(iteration_results)
 
 
