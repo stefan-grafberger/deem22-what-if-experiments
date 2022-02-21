@@ -100,8 +100,8 @@ def execute_review_pipeline_opt(debug):
     category_id_test = test_data[['category_id']]
     category_id_test_featurized = category_id_featurizer.transform(category_id_test).toarray()
 
-    review_headline_train = train_data['review_headline']
-    title_and_review_text_train = train_data.product_title + ' ' + review_headline_train + ' ' + \
+    review_headline_train = train_data[['review_headline']]
+    title_and_review_text_train = train_data.product_title + ' ' + review_headline_train.review_headline + ' ' + \
                                   train_data.review_body
     title_and_review_text_train_featurizer = HashingVectorizer(ngram_range=(1, 3), n_features=100)
     title_and_review_text_train_featurized = title_and_review_text_train_featurizer \
@@ -341,12 +341,92 @@ def execute_review_pipeline_opt(debug):
                                                           verified_purchase_train, verified_purchase_train_all_corrupt,
                                                           vine_test_featurized, vine_train_featurized)
 
-    if debug is True:
-        print("____")
-        print(f"Now testing corruption of {{corruption_fraction * 100}}% of feature {{corrupt_feature}}")
-        print("Corruptions in Test")
+    feature = "review_headline"
+    review_headline_train_all_corrupt = review_headline_train.copy()
+    for index, row in review_headline_train_all_corrupt.iterrows():
+        column_value = row["review_headline"]
+        for character, replacement in replacements.items():
+            column_value = str(column_value).replace(character, replacement)
+        review_headline_train_all_corrupt.at[index, "review_headline"] = column_value
+
+    corrupt_review_headline_train_w_corruption_fraction(category_id_test_featurized, category_id_train_featurized,
+                                                        0.2, debug, feature, iteration_results,
+                                                        train_data.product_title, train_data.review_body, review_headline_train,
+                                                        review_headline_train_all_corrupt, star_rating_test_featurized,
+                                                        star_rating_train_featurized, test_labels,
+                                                        test_review_headline_02c, train_labels,
+                                                        verified_purchase_test_featurized,
+                                                        verified_purchase_train_featurized, vine_test_featurized,
+                                                        vine_train_featurized)
+    corrupt_review_headline_train_w_corruption_fraction(category_id_test_featurized, category_id_train_featurized,
+                                                        0.5, debug, feature, iteration_results,
+                                                        train_data.product_title, train_data.review_body,
+                                                        review_headline_train,
+                                                        review_headline_train_all_corrupt, star_rating_test_featurized,
+                                                        star_rating_train_featurized, test_labels,
+                                                        test_review_headline_05c, train_labels,
+                                                        verified_purchase_test_featurized,
+                                                        verified_purchase_train_featurized, vine_test_featurized,
+                                                        vine_train_featurized)
+    corrupt_review_headline_train_w_corruption_fraction(category_id_test_featurized, category_id_train_featurized,
+                                                        0.9, debug, feature, iteration_results,
+                                                        train_data.product_title, train_data.review_body,
+                                                        review_headline_train,
+                                                        review_headline_train_all_corrupt, star_rating_test_featurized,
+                                                        star_rating_train_featurized, test_labels,
+                                                        test_review_headline_09c, train_labels,
+                                                        verified_purchase_test_featurized,
+                                                        verified_purchase_train_featurized, vine_test_featurized,
+                                                        vine_train_featurized)
 
     return pd.DataFrame(iteration_results)
+
+
+def corrupt_review_headline_train_w_corruption_fraction(category_id_test_featurized, category_id_train_featurized,
+                                                        corruption_fraction, debug, feature, iteration_results,
+                                                        product_title_train, review_body_train, review_headline_train,
+                                                        review_headline_train_all_corrupt, star_rating_test_featurized,
+                                                        star_rating_train_featurized, test_labels,
+                                                        test_review_headline_02c, train_labels,
+                                                        verified_purchase_test_featurized,
+                                                        verified_purchase_train_featurized, vine_test_featurized,
+                                                        vine_train_featurized):
+    if debug is True:
+        print("____")
+        print(f"Now testing corruption of {corruption_fraction * 100}% of feature {feature}")
+        print("Corruptions in Train and Test")
+    review_headline_train_w_corrupt_fraction = review_headline_train.copy()
+    indexes_to_corrupt = numpy.random.permutation(review_headline_train.index)[
+                         :int(len(review_headline_train) * corruption_fraction)]
+    review_headline_train_w_corrupt_fraction.loc[indexes_to_corrupt, feature] = review_headline_train_all_corrupt.loc[
+        indexes_to_corrupt, feature]
+    title_and_review_text_train_w_corrupt_fraction = product_title_train + ' ' + review_headline_train_w_corrupt_fraction.review_headline + ' ' + \
+                                                     review_body_train
+    title_and_review_text_train_featurizer_02c = HashingVectorizer(ngram_range=(1, 3), n_features=100)
+    title_and_review_text_train_featurized_w_corrupt_fraction = title_and_review_text_train_featurizer_02c \
+        .fit_transform(title_and_review_text_train_w_corrupt_fraction).toarray()
+    train_review_headline_w_corrupt_fraction = numpy.hstack([star_rating_train_featurized, vine_train_featurized,
+                                                             verified_purchase_train_featurized,
+                                                             category_id_train_featurized,
+                                                             title_and_review_text_train_featurized_w_corrupt_fraction])
+    model_review_headline_c02 = SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced")
+    model_review_headline_c02 = model_review_headline_c02.fit(train_review_headline_w_corrupt_fraction,
+                                                              train_labels)
+    title_and_review_text_test_featurized_w_corrupt_fraction = title_and_review_text_train_featurizer_02c.transform(
+        test_review_headline_02c).toarray()
+    test_predict_review_headline_corrupt_fraction = numpy.hstack(
+        [star_rating_test_featurized, vine_test_featurized,
+         verified_purchase_test_featurized,
+         category_id_test_featurized, title_and_review_text_test_featurized_w_corrupt_fraction])
+    # This should fail
+    # numpy.testing.assert_allclose(test_wo_corruptions, test_verified_purchase_w_corrupt_fraction, rtol=1e-5, atol=0)
+    test_predict_review_headline_corrupt_fraction = model_review_headline_c02.predict(
+        test_predict_review_headline_corrupt_fraction)
+    scores = {}
+    scores['roc_auc'] = roc_auc_score(test_predict_review_headline_corrupt_fraction, test_labels)
+    scores['f1'] = f1_score(test_predict_review_headline_corrupt_fraction, test_labels, average='macro')
+    print_if_debug_and_append_iteration_results(debug, iteration_results, scores, True, True,
+                                                corruption_fraction, feature)
 
 
 def corrupt_verified_purchase_train_w_corruption_fraction(category_id_test_featurized, category_id_train_featurized,
@@ -360,7 +440,7 @@ def corrupt_verified_purchase_train_w_corruption_fraction(category_id_test_featu
     if debug is True:
         print("____")
         print(f"Now testing corruption of {corruption_fraction * 100}% of feature {feature}")
-        print("Corruptions in Test")
+        print("Corruptions in Train and Test")
     verified_purchase_train_w_corrupt_fraction = verified_purchase_train.copy()
     indexes_to_corrupt = numpy.random.permutation(verified_purchase_train.index)[
                          :int(len(verified_purchase_train) * corruption_fraction)]
@@ -542,7 +622,7 @@ def corrupt_review_headline_test_with_corruption_fraction(category_id_test_featu
     print_if_debug_and_append_iteration_results(debug, iteration_results, scores, True, False,
                                                 corruption_fraction, feature)
 
-    return review_headline_test_w_corrupt_fraction
+    return title_and_review_text_test_w_corrupt_fraction
 
 
 def print_if_debug_and_append_iteration_results(debug, iteration_results, scores, test_corruption,
