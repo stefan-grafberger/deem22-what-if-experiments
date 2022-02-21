@@ -1,3 +1,4 @@
+import numpy
 import pandas as pd
 import numpy as np
 
@@ -38,30 +39,6 @@ def execute_credit_pipeline_opt(debug):
         return adult_train, adult_test
 
 
-    def create_feature_encoding_pipeline():
-
-        def safe_log(x):
-            return np.log(x, out=np.zeros_like(x), where=(x != 0))
-
-        impute_and_one_hot_encode = Pipeline([
-            ('impute', SimpleImputer(strategy='most_frequent')),
-            ('encode', OneHotEncoder(sparse=False, handle_unknown='ignore'))
-        ])
-
-        impute_and_scale = Pipeline([
-            ('impute', SimpleImputer(strategy='mean')),
-            ('log_transform', FunctionTransformer(lambda x: safe_log(x))),
-            ('scale', StandardScaler())
-        ])
-
-        featurisation = ColumnTransformer(transformers=[
-            ("impute_and_one_hot_encode", impute_and_one_hot_encode, ['workclass', 'education', 'occupation']),
-            ('impute_and_scale', impute_and_scale, ['age', 'capital-gain', 'capital-loss', 'hours-per-week']),
-        ], remainder='drop')
-
-        return featurisation
-
-
     def extract_labels(adult_train, adult_test):
         adult_train_labels = label_binarize(adult_train['income-per-year'], classes=['<=50K', '>50K']).ravel()
         # The test data has a dot in the class names for some reason...
@@ -70,13 +47,8 @@ def execute_credit_pipeline_opt(debug):
         return adult_train_labels, adult_test_labels
 
 
-    def create_training_pipeline():
-        featurisation = create_feature_encoding_pipeline()
-        return Pipeline([
-            ('features', featurisation),
-            ('learner', SGDClassifier(loss='log'))
-        ])
-
+    def safe_log(x):
+        return np.log(x, out=np.zeros_like(x), where=(x != 0))
 
     train_location = f'{str(get_project_root())}/whatif/example_pipelines/datasets/income/adult.data'
     test_location = f'{str(get_project_root())}/whatif/example_pipelines/datasets/income/adult.test'
@@ -87,11 +59,51 @@ def execute_credit_pipeline_opt(debug):
 
 
     train_labels, test_labels = extract_labels(train, test)
-    pipeline = create_training_pipeline()
+    def get_cat_featurizer():
+        return Pipeline([
+            ('impute', SimpleImputer(strategy='most_frequent')),
+            ('encode', OneHotEncoder(sparse=False, handle_unknown='ignore'))
+        ])
+    def get_num_featurizer():
+        return Pipeline([
+            ('impute', SimpleImputer(strategy='mean')),
+            ('log_transform', FunctionTransformer(lambda x: safe_log(x))),
+            ('scale', StandardScaler())
+        ])
+    workclass_featurizater = get_cat_featurizer()
+    education_featurizater = get_cat_featurizer()
+    occupation_featurizer = get_cat_featurizer()
+    age_featurizer = get_num_featurizer()
+    capital_gain_featurizer = get_num_featurizer()
+    capital_loss_featurizer = get_num_featurizer()
+    hours_per_week_featurizer = get_num_featurizer()
 
-    model = pipeline.fit(train, train_labels)
+    workclass_train = workclass_featurizater.fit_transform(train[['workclass']])
+    education_train = education_featurizater.fit_transform(train[['education']])
+    occupation_train = occupation_featurizer.fit_transform(train[['occupation']])
+    age_featurizer_train = age_featurizer.fit_transform(train[['age']])
+    capital_gain_train = capital_gain_featurizer.fit_transform(train[['capital-gain']])
+    capital_loss_train = capital_loss_featurizer.fit_transform(train[['capital-loss']])
+    hours_per_week_train = hours_per_week_featurizer.fit_transform(train[['hours-per-week']])
 
-    test_predict = model.predict(test)
+    featurized_train = numpy.hstack([workclass_train, education_train, occupation_train, age_featurizer_train,
+                                     capital_gain_train, capital_loss_train, hours_per_week_train])
+
+    model = SGDClassifier(loss='log')
+
+    model = model.fit(featurized_train, train_labels)
+
+    workclass_test = workclass_featurizater.transform(test[['workclass']])
+    education_test = education_featurizater.transform(test[['education']])
+    occupation_test = occupation_featurizer.transform(test[['occupation']])
+    age_featurizer_test = age_featurizer.transform(test[['age']])
+    capital_gain_test = capital_gain_featurizer.transform(test[['capital-gain']])
+    capital_loss_test = capital_loss_featurizer.transform(test[['capital-loss']])
+    hours_per_week_test = hours_per_week_featurizer.transform(test[['hours-per-week']])
+
+    featurized_test = numpy.hstack([workclass_test, education_test, occupation_test, age_featurizer_test,
+                                     capital_gain_test, capital_loss_test, hours_per_week_test])
+    test_predict = model.predict(featurized_test)
     scores = {}
     scores['accuracy'] = accuracy_score(test_labels, test_predict)
     scores['non_protected_fnr'], scores['protected_fnr'] = compute_fairness_metric("race", "White", test, test_labels,
