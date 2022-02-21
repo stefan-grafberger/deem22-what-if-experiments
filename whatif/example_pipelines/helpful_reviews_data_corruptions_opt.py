@@ -146,10 +146,15 @@ def execute_review_pipeline_opt(debug):
         print(f"Now testing corruption of 20% of feature star_rating")
         print("Corruptions in Test")
     corruption_fraction = 0.2
-    sampled_star_rating_rows_to_corrupt = numpy.random.permutation(star_rating_test.index)[:int(len(star_rating_test) * corruption_fraction)]
+    star_rating_test_all_corrupt = star_rating_test.copy()
     scale_factor = numpy.random.choice([10, 100, 1000])
+    star_rating_test_all_corrupt.loc[:, 'star_rating'] *= scale_factor
+    random_permutation = numpy.random.permutation(star_rating_test.index)
+
     star_rating_test_corrupt02 = star_rating_test.copy()
-    star_rating_test_corrupt02.loc[sampled_star_rating_rows_to_corrupt, 'star_rating'] *= scale_factor
+    indexes_to_corrupt = random_permutation[:int(len(star_rating_test) * corruption_fraction)]
+    star_rating_test_corrupt02.loc[indexes_to_corrupt, 'star_rating'] = star_rating_test_all_corrupt.loc[indexes_to_corrupt, 'star_rating']
+
     star_rating_test_featurized_corrupt02 = star_rating_train_featurizer.transform(star_rating_test_corrupt02)
 
     test_star_rating_corrupt02 = numpy.hstack([star_rating_test_featurized_corrupt02, vine_test_featurized,
