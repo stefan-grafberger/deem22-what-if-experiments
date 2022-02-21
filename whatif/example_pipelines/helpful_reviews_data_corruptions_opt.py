@@ -89,7 +89,8 @@ def execute_review_pipeline_opt(debug):
 
     verified_purchase_train = train_data[['verified_purchase']]
     verified_purchase_train_featurizer = OneHotEncoder(handle_unknown='ignore')
-    verified_purchase_train_featurized = verified_purchase_train_featurizer.fit_transform(verified_purchase_train).toarray()
+    verified_purchase_train_featurized = verified_purchase_train_featurizer.fit_transform(
+        verified_purchase_train).toarray()
     verified_purchase_test = test_data[['verified_purchase']]
     verified_purchase_test_featurized = verified_purchase_train_featurizer.transform(verified_purchase_test).toarray()
 
@@ -101,13 +102,13 @@ def execute_review_pipeline_opt(debug):
 
     review_headline_train = train_data['review_headline']
     title_and_review_text_train = train_data.product_title + ' ' + review_headline_train + ' ' + \
-                                          train_data.review_body
+                                  train_data.review_body
     title_and_review_text_train_featurizer = HashingVectorizer(ngram_range=(1, 3), n_features=100)
-    title_and_review_text_train_featurized = title_and_review_text_train_featurizer\
+    title_and_review_text_train_featurized = title_and_review_text_train_featurizer \
         .fit_transform(title_and_review_text_train).toarray()
     review_headline_test = test_data['review_headline']
     title_and_review_text_test = test_data.product_title + ' ' + review_headline_test + ' ' + \
-                                  test_data.review_body
+                                 test_data.review_body
     title_and_review_text_test_featurized = title_and_review_text_train_featurizer \
         .transform(title_and_review_text_test).toarray()
 
@@ -115,11 +116,11 @@ def execute_review_pipeline_opt(debug):
         print("No corruptions")
 
     train_wo_corruptions = numpy.hstack([star_rating_train_featurized, vine_train_featurized,
-                                             verified_purchase_train_featurized,
-                              category_id_train_featurized, title_and_review_text_train_featurized])
+                                         verified_purchase_train_featurized,
+                                         category_id_train_featurized, title_and_review_text_train_featurized])
     test_wo_corruptions = numpy.hstack([star_rating_test_featurized, vine_test_featurized,
-                                             verified_purchase_test_featurized,
-                              category_id_test_featurized, title_and_review_text_test_featurized])
+                                        verified_purchase_test_featurized,
+                                        category_id_test_featurized, title_and_review_text_test_featurized])
 
     model_wo_corruptions = SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced")
 
@@ -141,46 +142,25 @@ def execute_review_pipeline_opt(debug):
     iteration_results["roc_auc"].append(scores["roc_auc"])
     iteration_results["f1"].append(scores["f1"])
 
-    if debug is True:
-        print("____")
-        print(f"Now testing corruption of 20% of feature star_rating")
-        print("Corruptions in Test")
-    corruption_fraction = 0.2
+    feature = "star_rating"
     star_rating_test_all_corrupt = star_rating_test.copy()
     scale_factor = numpy.random.choice([10, 100, 1000])
     star_rating_test_all_corrupt.loc[:, 'star_rating'] *= scale_factor
-    random_permutation = numpy.random.permutation(star_rating_test.index)
-
-    star_rating_test_corrupt02 = star_rating_test.copy()
-    indexes_to_corrupt = random_permutation[:int(len(star_rating_test) * corruption_fraction)]
-    star_rating_test_corrupt02.loc[indexes_to_corrupt, 'star_rating'] = star_rating_test_all_corrupt.loc[indexes_to_corrupt, 'star_rating']
-
-    star_rating_test_featurized_corrupt02 = star_rating_train_featurizer.transform(star_rating_test_corrupt02)
-
-    test_star_rating_corrupt02 = numpy.hstack([star_rating_test_featurized_corrupt02, vine_test_featurized,
-                                        verified_purchase_test_featurized,
-                                        category_id_test_featurized, title_and_review_text_test_featurized])
-
-    # This should fail
-    # numpy.testing.assert_allclose(test_wo_corruptions, test_star_rating_corrupt02, rtol=1e-5, atol=0)
-    test_predict_star_rating_corrupt02 = model_wo_corruptions.predict(test_star_rating_corrupt02)
-    # Potential error with corruptions: Only one class present in y_true
-    scores = {}
-    scores['roc_auc'] = roc_auc_score(test_predict_star_rating_corrupt02, test_labels)
-    if debug is True:
-        print(f'AUC Score on the test set: {scores["roc_auc"]}')
-    scores['f1'] = f1_score(test_predict_star_rating_corrupt02, test_labels, average='macro')
-    if debug is True:
-        print(f'F1 Score on the test set: {scores["f1"]}')
-
-    iteration_results["test_corruption"].append(True)
-    iteration_results["train_corruption"].append(False)
-    iteration_results["corruption_fraction"].append(0.2)
-    iteration_results["feature"].append("star_rating")
-    iteration_results["roc_auc"].append(scores["roc_auc"])
-    iteration_results["f1"].append(scores["f1"])
-
-    # TODO: Can we only corrupt all data once and then sample from it to further share work across iterations?
+    corrupt_star_rating_test_with_corruption_fraction(category_id_test_featurized, 0.2, debug, feature,
+                                                      iteration_results, model_wo_corruptions, star_rating_test,
+                                                      star_rating_test_all_corrupt, star_rating_train_featurizer,
+                                                      test_labels, title_and_review_text_test_featurized,
+                                                      verified_purchase_test_featurized, vine_test_featurized)
+    corrupt_star_rating_test_with_corruption_fraction(category_id_test_featurized, 0.5, debug, feature,
+                                                      iteration_results, model_wo_corruptions, star_rating_test,
+                                                      star_rating_test_all_corrupt, star_rating_train_featurizer,
+                                                      test_labels, title_and_review_text_test_featurized,
+                                                      verified_purchase_test_featurized, vine_test_featurized)
+    corrupt_star_rating_test_with_corruption_fraction(category_id_test_featurized, 0.9, debug, feature,
+                                                      iteration_results, model_wo_corruptions, star_rating_test,
+                                                      star_rating_test_all_corrupt, star_rating_train_featurizer,
+                                                      test_labels, title_and_review_text_test_featurized,
+                                                      verified_purchase_test_featurized, vine_test_featurized)
 
     if debug is True:
         print("____")
@@ -188,6 +168,48 @@ def execute_review_pipeline_opt(debug):
         print("Corruptions in Test")
 
     return pd.DataFrame(iteration_results)
+
+
+def corrupt_star_rating_test_with_corruption_fraction(category_id_test_featurized, corruption_fraction, debug, feature,
+                                                      iteration_results, model_wo_corruptions, star_rating_test,
+                                                      star_rating_test_all_corrupt, star_rating_train_featurizer,
+                                                      test_labels, title_and_review_text_test_featurized,
+                                                      verified_purchase_test_featurized, vine_test_featurized):
+    if debug is True:
+        print("____")
+        print(f"Now testing corruption of {corruption_fraction * 100}% of feature {feature}")
+        print("Corruptions in Test")
+    star_rating_test_w_corrupt_fraction = star_rating_test.copy()
+    indexes_to_corrupt = numpy.random.permutation(star_rating_test.index)[
+                         :int(len(star_rating_test) * corruption_fraction)]
+    star_rating_test_w_corrupt_fraction.loc[indexes_to_corrupt, feature] = star_rating_test_all_corrupt.loc[
+        indexes_to_corrupt, feature]
+    star_rating_test_featurized_w_corrupt_fraction = star_rating_train_featurizer.transform(star_rating_test_w_corrupt_fraction)
+    test_star_rating_w_corrupt_fraction = numpy.hstack([star_rating_test_featurized_w_corrupt_fraction, vine_test_featurized,
+                                               verified_purchase_test_featurized,
+                                               category_id_test_featurized, title_and_review_text_test_featurized])
+    # This should fail
+    # numpy.testing.assert_allclose(test_wo_corruptions, test_star_rating_w_corrupt_fraction, rtol=1e-5, atol=0)
+    test_predict_star_rating_corrupt02 = model_wo_corruptions.predict(test_star_rating_w_corrupt_fraction)
+    scores = {}
+    scores['roc_auc'] = roc_auc_score(test_predict_star_rating_corrupt02, test_labels)
+    scores['f1'] = f1_score(test_predict_star_rating_corrupt02, test_labels, average='macro')
+    print_if_debug_and_append_iteration_results(debug, iteration_results, scores, True, False,
+                                                corruption_fraction, feature)
+
+
+def print_if_debug_and_append_iteration_results(debug, iteration_results, scores, test_corruption,
+                                                train_corruption, corruption_fraction, feature):
+    if debug is True:
+        print(f'AUC Score on the test set: {scores["roc_auc"]}')
+    if debug is True:
+        print(f'F1 Score on the test set: {scores["f1"]}')
+    iteration_results["test_corruption"].append(test_corruption)
+    iteration_results["train_corruption"].append(train_corruption)
+    iteration_results["corruption_fraction"].append(corruption_fraction)
+    iteration_results["feature"].append(feature)
+    iteration_results["roc_auc"].append(scores["roc_auc"])
+    iteration_results["f1"].append(scores["f1"])
 
 
 def corrupt_data(data, corruption_fraction, corrupt_feature):
@@ -246,7 +268,7 @@ def measure_review_corruption_opt_exec_time(debug, corruption_percentages, corru
 
 
 do_review_corruption_opt(debug=True, corruption_percentages=[0.5, 0.9],
-                           corrupt_features=["star_rating", "verified_purchase", "review_headline"])
+                         corrupt_features=["star_rating", "verified_purchase", "review_headline"])
 
 # measure_review_corruption_opt_exec_time(debug=True, corruption_percentages=[0.5, 0.9],
 #                                         corrupt_features=["star_rating", "verified_purchase", "review_headline"],
