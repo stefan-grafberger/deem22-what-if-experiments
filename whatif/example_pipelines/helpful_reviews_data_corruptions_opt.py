@@ -143,10 +143,42 @@ def execute_review_pipeline_opt(debug):
 
     if debug is True:
         print("____")
+        print(f"Now testing corruption of 20% of feature star_rating")
+        print("Corruptions in Test")
+    corruption_fraction = 0.2
+    sampled_star_rating_rows_to_corrupt = numpy.random.permutation(star_rating_test.index)[:int(len(star_rating_test) * corruption_fraction)]
+    scale_factor = numpy.random.choice([10, 100, 1000])
+    star_rating_test_corrupt02 = star_rating_test.copy()
+    star_rating_test_corrupt02.loc[sampled_star_rating_rows_to_corrupt, 'star_rating'] *= scale_factor
+    star_rating_test_featurized_corrupt02 = star_rating_train_featurizer.transform(star_rating_test_corrupt02)
+
+    test_star_rating_corrupt02 = numpy.hstack([star_rating_test_featurized_corrupt02, vine_test_featurized,
+                                        verified_purchase_test_featurized,
+                                        category_id_test_featurized, title_and_review_text_test_featurized])
+
+    # This should fail
+    # numpy.testing.assert_allclose(test_wo_corruptions, test_star_rating_corrupt02, rtol=1e-5, atol=0)
+    test_predict_star_rating_corrupt02 = model_wo_corruptions.predict(test_star_rating_corrupt02)
+    # Potential error with corruptions: Only one class present in y_true
+    scores = {}
+    scores['roc_auc'] = roc_auc_score(test_predict_star_rating_corrupt02, test_labels)
+    if debug is True:
+        print(f'AUC Score on the test set: {scores["roc_auc"]}')
+    scores['f1'] = f1_score(test_predict_star_rating_corrupt02, test_labels, average='macro')
+    if debug is True:
+        print(f'F1 Score on the test set: {scores["f1"]}')
+
+    iteration_results["test_corruption"].append(True)
+    iteration_results["train_corruption"].append(False)
+    iteration_results["corruption_fraction"].append(0.2)
+    iteration_results["feature"].append("star_rating")
+    iteration_results["roc_auc"].append(scores["roc_auc"])
+    iteration_results["f1"].append(scores["f1"])
+
+    if debug is True:
+        print("____")
         print(f"Now testing corruption of {{corruption_fraction * 100}}% of feature {{corrupt_feature}}")
         print("Corruptions in Test")
-
-
 
     return pd.DataFrame(iteration_results)
 
