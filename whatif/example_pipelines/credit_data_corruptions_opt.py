@@ -89,9 +89,9 @@ def execute_credit_pipeline_opt(debug):
     featurized_train = numpy.hstack([workclass_train, education_train, occupation_train, age_featurizer_train,
                                      capital_gain_train, capital_loss_train, hours_per_week_train])
 
-    model = SGDClassifier(loss='log')
+    model_wo_corruption = SGDClassifier(loss='log')
 
-    model = model.fit(featurized_train, train_labels)
+    model_wo_corruption = model_wo_corruption.fit(featurized_train, train_labels)
 
     workclass_test = workclass_featurizater.transform(test[['workclass']])
     education_test = education_featurizater.transform(test[['education']])
@@ -103,7 +103,7 @@ def execute_credit_pipeline_opt(debug):
 
     featurized_test = numpy.hstack([workclass_test, education_test, occupation_test, age_featurizer_test,
                                      capital_gain_test, capital_loss_test, hours_per_week_test])
-    test_predict = model.predict(featurized_test)
+    test_predict = model_wo_corruption.predict(featurized_test)
     scores = {}
     scores['accuracy'] = accuracy_score(test_labels, test_predict)
     scores['non_protected_fnr'], scores['protected_fnr'] = compute_fairness_metric("race", "White", test, test_labels,
@@ -120,6 +120,37 @@ def execute_credit_pipeline_opt(debug):
     iteration_results["accuracy"].append(scores["accuracy"])
     iteration_results["non_protected_fnr"].append(scores["non_protected_fnr"])
     iteration_results["protected_fnr"].append(scores["protected_fnr"])
+
+    feature = "age"
+    age_test_all_corrupt = test[['age']].copy()
+    scale_factor = numpy.random.choice([10, 100, 1000])
+    age_test_all_corrupt.loc[:, 'age'] *= scale_factor
+
+    corruption_fraction = 0.2
+    age_test = test[['age']]
+    if debug is True:
+        print("____")
+        print(f"Now testing corruption of {corruption_fraction * 100}% of feature {feature}")
+        print("Corruptions in Test")
+    age_test_w_corrupt_fraction = age_test.copy()
+    indexes_to_corrupt = numpy.random.permutation(age_test.index)[
+                         :int(len(age_test) * corruption_fraction)]
+    age_test_w_corrupt_fraction.loc[indexes_to_corrupt, feature] = age_test_all_corrupt.loc[
+        indexes_to_corrupt, feature]
+    age_test_featurized_w_corrupt_fraction = age_featurizer.transform(
+        age_test_w_corrupt_fraction)
+    test_age_w_corrupt_fraction = numpy.hstack(
+        [star_rating_test_featurized_w_corrupt_fraction, vine_test_featurized,
+         verified_purchase_test_featurized,
+         category_id_test_featurized, title_and_review_text_test_featurized])
+    # This should fail
+    # numpy.testing.assert_allclose(test_wo_corruptions, test_star_rating_w_corrupt_fraction, rtol=1e-5, atol=0)
+    test_predict_star_rating_corrupt_fraction = model_wo_corruptions.predict(test_star_rating_w_corrupt_fraction)
+    scores = {}
+    scores['roc_auc'] = roc_auc_score(test_predict_star_rating_corrupt_fraction, test_labels)
+    scores['f1'] = f1_score(test_predict_star_rating_corrupt_fraction, test_labels, average='macro')
+    print_if_debug_and_append_iteration_results(debug, iteration_results, scores, True, False,
+                                                corruption_fraction, feature)
 
 
 def do_credit_corruption_opt(debug):
