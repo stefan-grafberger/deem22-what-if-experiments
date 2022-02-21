@@ -106,8 +106,8 @@ def execute_review_pipeline_opt(debug):
     title_and_review_text_train_featurizer = HashingVectorizer(ngram_range=(1, 3), n_features=100)
     title_and_review_text_train_featurized = title_and_review_text_train_featurizer \
         .fit_transform(title_and_review_text_train).toarray()
-    review_headline_test = test_data['review_headline']
-    title_and_review_text_test = test_data.product_title + ' ' + review_headline_test + ' ' + \
+    review_headline_test = test_data[['review_headline']]
+    title_and_review_text_test = test_data.product_title + ' ' + review_headline_test.review_headline + ' ' + \
                                  test_data.review_body
     title_and_review_text_test_featurized = title_and_review_text_train_featurizer \
         .transform(title_and_review_text_test).toarray()
@@ -190,7 +190,7 @@ def execute_review_pipeline_opt(debug):
                                                             star_rating_test_featurized, vine_test_featurized)
 
     feature = "review_headline"
-    review_headline_test_all_corrupt = verified_purchase_test.copy()
+    review_headline_test_all_corrupt = review_headline_test.copy()
     replacements = {
         'a': 'á',
         'A': 'Á',
@@ -206,7 +206,34 @@ def execute_review_pipeline_opt(debug):
         for character, replacement in replacements.items():
             column_value = str(column_value).replace(character, replacement)
         review_headline_test_all_corrupt.at[index, "review_headline"] = column_value
-
+    # dont forget additional column creation
+    corrupt_review_headline_test_with_corruption_fraction(category_id_test_featurized, 0.2, debug,
+                                                          feature,
+                                                          iteration_results, model_wo_corruptions,
+                                                          verified_purchase_test_featurized,
+                                                          review_headline_test, review_headline_test_all_corrupt,
+                                                          title_and_review_text_train_featurizer,
+                                                          test_labels, title_and_review_text_test_featurized,
+                                                          star_rating_test_featurized, vine_test_featurized,
+                                                          test_data.product_title, test_data.review_body)
+    corrupt_review_headline_test_with_corruption_fraction(category_id_test_featurized, 0.5, debug,
+                                                          feature,
+                                                          iteration_results, model_wo_corruptions,
+                                                          verified_purchase_test_featurized,
+                                                          review_headline_test, review_headline_test_all_corrupt,
+                                                          title_and_review_text_train_featurizer,
+                                                          test_labels, title_and_review_text_test_featurized,
+                                                          star_rating_test_featurized, vine_test_featurized,
+                                                          test_data.product_title, test_data.review_body)
+    corrupt_review_headline_test_with_corruption_fraction(category_id_test_featurized, 0.9, debug,
+                                                          feature,
+                                                          iteration_results, model_wo_corruptions,
+                                                          verified_purchase_test_featurized,
+                                                          review_headline_test, review_headline_test_all_corrupt,
+                                                          title_and_review_text_train_featurizer,
+                                                          test_labels, title_and_review_text_test_featurized,
+                                                          star_rating_test_featurized, vine_test_featurized,
+                                                          test_data.product_title, test_data.review_body)
 
     if debug is True:
         print("____")
@@ -263,6 +290,40 @@ def corrupt_verified_purchase_test_with_corruption_fraction(category_id_test_fea
     test_verified_purchase_w_corrupt_fraction = numpy.hstack([star_rating_test_featurized, vine_test_featurized,
                                                verified_purchase_test_featurized_w_corrupt_fraction,
                                                category_id_test_featurized, title_and_review_text_test_featurized])
+    # This should fail
+    # numpy.testing.assert_allclose(test_wo_corruptions, test_verified_purchase_w_corrupt_fraction, rtol=1e-5, atol=0)
+    test_predict_verified_purchase_corrupt_fraction = model_wo_corruptions.predict(test_verified_purchase_w_corrupt_fraction)
+    scores = {}
+    scores['roc_auc'] = roc_auc_score(test_predict_verified_purchase_corrupt_fraction, test_labels)
+    scores['f1'] = f1_score(test_predict_verified_purchase_corrupt_fraction, test_labels, average='macro')
+    print_if_debug_and_append_iteration_results(debug, iteration_results, scores, True, False,
+                                                corruption_fraction, feature)
+
+
+def corrupt_review_headline_test_with_corruption_fraction(category_id_test_featurized, corruption_fraction, debug, feature,
+                                                      iteration_results, model_wo_corruptions, verified_purchase_test_featurized,
+                                                      review_headline_test, review_headline_test_all_corrupt,
+                                                          title_and_review_text_train_featurizer,
+                                                      test_labels, title_and_review_text_test_featurized,
+                                                      star_rating_test_featurized, vine_test_featurized,
+                                                          product_title_test, review_body_test):
+    if debug is True:
+        print("____")
+        print(f"Now testing corruption of {corruption_fraction * 100}% of feature {feature}")
+        print("Corruptions in Test")
+    review_headline_test_w_corrupt_fraction = review_headline_test.copy()
+    indexes_to_corrupt = numpy.random.permutation(review_headline_test.index)[
+                         :int(len(review_headline_test) * corruption_fraction)]
+    review_headline_test_w_corrupt_fraction.loc[indexes_to_corrupt, feature] = review_headline_test_all_corrupt.loc[
+        indexes_to_corrupt, feature]
+    title_and_review_text_test_w_corrupt_fraction = product_title_test + ' ' + review_headline_test_w_corrupt_fraction.review_headline + ' ' + \
+                                 review_body_test
+
+    title_and_review_text_test_featurized_w_corrupt_fraction = title_and_review_text_train_featurizer\
+        .transform(title_and_review_text_test_w_corrupt_fraction).toarray()
+    test_verified_purchase_w_corrupt_fraction = numpy.hstack([star_rating_test_featurized, vine_test_featurized,
+                                               verified_purchase_test_featurized,
+                                               category_id_test_featurized, title_and_review_text_test_featurized_w_corrupt_fraction])
     # This should fail
     # numpy.testing.assert_allclose(test_wo_corruptions, test_verified_purchase_w_corrupt_fraction, rtol=1e-5, atol=0)
     test_predict_verified_purchase_corrupt_fraction = model_wo_corruptions.predict(test_verified_purchase_w_corrupt_fraction)
