@@ -1,6 +1,7 @@
 import timeit
 from inspect import cleandoc
 
+import numpy
 import pandas as pd
 
 from jenga.corruptions.generic import CategoricalShift, MissingValues
@@ -17,7 +18,7 @@ from sklearn.pipeline import Pipeline
 from whatif.utils.utils import get_project_root
 
 
-def execute_review_pipeline_opt(debug, corruption_percentages, corrupt_features):
+def execute_review_pipeline_opt(debug):
     iteration_results = {
         "test_corruption": [],
         "train_corruption": [],
@@ -54,9 +55,9 @@ def execute_review_pipeline_opt(debug, corruption_percentages, corrupt_features)
     train_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date <= split_date].copy()
     test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date].copy()
 
-    if corrupt_train is True:
+    if False is True:  # TODO
         train_data = corrupt_data(train_data, corruption_fraction, corrupt_feature)
-    if corrupt_test is True:
+    if False is True:  # TODO
         test_data = corrupt_data(test_data, corruption_fraction, corrupt_feature)
 
     train_data['product_title'] = train_data['product_title'].fillna(value='')
@@ -82,18 +83,70 @@ def execute_review_pipeline_opt(debug, corruption_percentages, corrupt_features)
     numerical_attributes = ['star_rating']
     categorical_attributes = ['vine', 'verified_purchase', 'category_id']
 
-    feature_transformation = ColumnTransformer(transformers=[
+    star_rating_train = train_data[['star_rating']]
+    star_rating_train_featurizer = StandardScaler()
+    star_rating_train_featurized = star_rating_train_featurizer.fit_transform(star_rating_train)
+    star_rating_test = test_data[['star_rating']]
+    star_rating_test_featurized = star_rating_train_featurizer.transform(star_rating_test)
+
+    vine_train = train_data[['vine']]
+    vine_train_featurizer = OneHotEncoder(handle_unknown='ignore')
+    vine_train_featurized = vine_train_featurizer.fit_transform(vine_train).toarray()
+    vine_test = test_data[['vine']]
+    vine_test_featurized = vine_train_featurizer.transform(vine_test).toarray()
+
+    verified_purchase_train = train_data[['verified_purchase']]
+    verified_purchase_train_featurizer = OneHotEncoder(handle_unknown='ignore')
+    verified_purchase_train_featurized = verified_purchase_train_featurizer.fit_transform(verified_purchase_train).toarray()
+    verified_purchase_test = test_data[['verified_purchase']]
+    verified_purchase_test_featurized = verified_purchase_train_featurizer.transform(verified_purchase_test).toarray()
+
+    category_id_train = train_data[['category_id']]
+    category_id_featurizer = OneHotEncoder(handle_unknown='ignore')
+    category_id_train_featurized = category_id_featurizer.fit_transform(category_id_train).toarray()
+    category_id_test = test_data[['category_id']]
+    category_id_test_featurized = category_id_featurizer.transform(category_id_test).toarray()
+
+    review_headline_train = train_data['review_headline']
+    title_and_review_text_train = train_data.product_title + ' ' + review_headline_train + ' ' + \
+                                          train_data.review_body
+    title_and_review_text_train_featurizer = HashingVectorizer(ngram_range=(1, 3), n_features=100)
+    title_and_review_text_train_featurized = title_and_review_text_train_featurizer\
+        .fit_transform(title_and_review_text_train).toarray()
+    review_headline_test = test_data['review_headline']
+    title_and_review_text_test = test_data.product_title + ' ' + review_headline_test + ' ' + \
+                                  test_data.review_body
+    title_and_review_text_test_featurized = title_and_review_text_train_featurizer \
+        .transform(title_and_review_text_test).toarray()
+
+
+    train_wo_corruptions = numpy.hstack([star_rating_train_featurized, vine_train_featurized,
+                                             verified_purchase_train_featurized,
+                              category_id_train_featurized, title_and_review_text_train_featurized])
+    test_wo_corruptions = numpy.hstack([star_rating_test_featurized, vine_test_featurized,
+                                             verified_purchase_test_featurized,
+                              category_id_test_featurized, title_and_review_text_test_featurized])
+
+
+    train_data['title_and_review_text'] = train_data.product_title + ' ' + train_data.review_headline + ' ' + \
+                                          train_data.review_body
+    test_data['title_and_review_text'] = test_data.product_title + ' ' + test_data.review_headline + ' ' + \
+                                         test_data.review_body
+
+    pipeline_wo_model = ColumnTransformer(transformers=[
         ('numerical_features', StandardScaler(), numerical_attributes),
         ('categorical_features', OneHotEncoder(handle_unknown='ignore'), categorical_attributes),
         ('textual_features', HashingVectorizer(ngram_range=(1, 3), n_features=100), 'title_and_review_text')
     ])
 
-    pipeline = Pipeline([
-        ('features', feature_transformation),
-        ('learner', SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced"))])
+    model = SGDClassifier(loss='log', penalty='l1', max_iter=1000, class_weight="balanced")
 
-    model = pipeline.fit(train_data, train_labels.ravel())
-    test_predict = model.predict(test_data)
+    column_transformer_transformed_train = pipeline_wo_model.fit_transform(train_data, train_labels.ravel())
+    model = model.fit(column_transformer_transformed_train, train_labels.ravel())
+    column_transformer_transformed_test = pipeline_wo_model.transform(test_data)
+    test_predict = model.predict(column_transformer_transformed_test)
+    numpy.testing.assert_allclose(train_wo_corruptions, column_transformer_transformed_train, rtol=1e-5, atol=0)
+    numpy.testing.assert_allclose(test_wo_corruptions, column_transformer_transformed_test, rtol=1e-5, atol=0)
     # Potential error with corruptions: Only one class present in y_true
     scores = {}
     scores['roc_auc'] = roc_auc_score(test_predict, test_labels)
@@ -142,7 +195,7 @@ def do_review_corruption_opt(debug, corruption_percentages, corrupt_features):
     }
     if debug is True:
         print("No corruptions")
-    scores = execute_review_pipeline_opt(False, False, 0.0, None, debug)
+    scores = execute_review_pipeline_opt(False)
     iteration_results["test_corruption"].append(False)
     iteration_results["train_corruption"].append(False)
     iteration_results["corruption_fraction"].append(None)
@@ -155,7 +208,7 @@ def do_review_corruption_opt(debug, corruption_percentages, corrupt_features):
                 print("____")
                 print(f"Now testing corruption of {corruption_fraction * 100}% of feature {corrupt_feature}")
                 print("Corruptions in Test")
-            scores = execute_review_pipeline_opt(False, True, corruption_fraction, corrupt_feature, debug)
+            scores = execute_review_pipeline_opt(False)
             iteration_results["test_corruption"].append(False)
             iteration_results["train_corruption"].append(True)
             iteration_results["corruption_fraction"].append(corruption_fraction)
@@ -164,7 +217,7 @@ def do_review_corruption_opt(debug, corruption_percentages, corrupt_features):
             iteration_results["f1"].append(scores["f1"])
             if debug is True:
                 print("Corruptions in Train and test")
-            scores = execute_review_pipeline_opt(True, True, corruption_fraction, corrupt_feature, debug)
+            scores = execute_review_pipeline_opt(True)
             iteration_results["test_corruption"].append(True)
             iteration_results["train_corruption"].append(True)
             iteration_results["corruption_fraction"].append(corruption_fraction)
@@ -198,9 +251,9 @@ def measure_review_corruption_opt_exec_time(debug, corruption_percentages, corru
     return pd.DataFrame({"runtimes": result})
 
 
-# do_review_corruption_opt(debug=True, corruption_percentages=[0.5, 0.9],
-#                            corrupt_features=["star_rating", "verified_purchase", "review_headline"])
+do_review_corruption_opt(debug=True, corruption_percentages=[0.5, 0.9],
+                           corrupt_features=["star_rating", "verified_purchase", "review_headline"])
 
-measure_review_corruption_opt_exec_time(debug=True, corruption_percentages=[0.5, 0.9],
-                                        corrupt_features=["star_rating", "verified_purchase", "review_headline"],
-                                        repeats=2)
+# measure_review_corruption_opt_exec_time(debug=True, corruption_percentages=[0.5, 0.9],
+#                                         corrupt_features=["star_rating", "verified_purchase", "review_headline"],
+#                                         repeats=2)

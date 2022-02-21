@@ -130,7 +130,7 @@ def corrupt_data(data, corruption_fraction, corrupt_feature):
     elif corrupt_feature == "review_body":
         data = MissingValues(column='review_body', fraction=corruption_fraction).transform(data)
     else:
-        assert(False)
+        assert False
 
     return data
 
