@@ -55,11 +55,6 @@ def execute_review_pipeline_opt(debug):
     train_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date <= split_date].copy()
     test_data = reviews_with_products_and_ratings[reviews_with_products_and_ratings.review_date > split_date].copy()
 
-    if False is True:  # TODO
-        train_data = corrupt_data(train_data, corruption_fraction, corrupt_feature)
-    if False is True:  # TODO
-        test_data = corrupt_data(test_data, corruption_fraction, corrupt_feature)
-
     train_data['product_title'] = train_data['product_title'].fillna(value='')
     test_data['product_title'] = test_data['product_title'].fillna(value='')
 

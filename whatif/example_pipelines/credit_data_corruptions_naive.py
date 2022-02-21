@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 from jenga.corruptions.generic import CategoricalShift, MissingValues
 from jenga.corruptions.numerical import Scaling
-from jenga.corruptions.text import BrokenCharacters
 
 from sklearn.linear_model import SGDClassifier
 from sklearn.impute import SimpleImputer
