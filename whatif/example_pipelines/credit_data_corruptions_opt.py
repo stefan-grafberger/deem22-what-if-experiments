@@ -73,7 +73,7 @@ def execute_credit_pipeline_opt(debug):
         ])
 
     workclass_featurizer = get_cat_featurizer()
-    education_featurizater = get_cat_featurizer()
+    education_featurizer = get_cat_featurizer()
     occupation_featurizer = get_cat_featurizer()
     age_featurizer = get_num_featurizer()
     capital_gain_featurizer = get_num_featurizer()
@@ -81,7 +81,7 @@ def execute_credit_pipeline_opt(debug):
     hours_per_week_featurizer = get_num_featurizer()
 
     workclass_train = workclass_featurizer.fit_transform(train[['workclass']])
-    education_train = education_featurizater.fit_transform(train[['education']])
+    education_train = education_featurizer.fit_transform(train[['education']])
     occupation_train = occupation_featurizer.fit_transform(train[['occupation']])
     age_featurizer_train = age_featurizer.fit_transform(train[['age']])
     capital_gain_train = capital_gain_featurizer.fit_transform(train[['capital-gain']])
@@ -96,7 +96,7 @@ def execute_credit_pipeline_opt(debug):
     model_wo_corruption = model_wo_corruption.fit(featurized_train, train_labels)
 
     workclass_test = workclass_featurizer.transform(test[['workclass']])
-    education_test = education_featurizater.transform(test[['education']])
+    education_test = education_featurizer.transform(test[['education']])
     occupation_test = occupation_featurizer.transform(test[['occupation']])
     age_test = age_featurizer.transform(test[['age']])
     capital_gain_test = capital_gain_featurizer.transform(test[['capital-gain']])
@@ -168,6 +168,29 @@ def execute_credit_pipeline_opt(debug):
                                                          test_labels,
                                                          age_test)
 
+    feature = "education"
+    education_test_c02 = corrupt_education_test_set_only(education_featurizer, None,
+                                                         capital_gain_test, capital_loss_test,
+                                                         0.2, debug, workclass_test, feature, featurized_test,
+                                                         hours_per_week_test,
+                                                         iteration_results, model_wo_corruption, occupation_test, test,
+                                                         test_labels,
+                                                         age_test)
+    education_test_c05 = corrupt_education_test_set_only(education_featurizer, None,
+                                                         capital_gain_test, capital_loss_test,
+                                                         0.5, debug, workclass_test, feature, featurized_test,
+                                                         hours_per_week_test,
+                                                         iteration_results, model_wo_corruption, occupation_test, test,
+                                                         test_labels,
+                                                         age_test)
+    education_test_c09 = corrupt_education_test_set_only(education_featurizer, None,
+                                                         capital_gain_test, capital_loss_test,
+                                                         0.9, debug, workclass_test, feature, featurized_test,
+                                                         hours_per_week_test,
+                                                         iteration_results, model_wo_corruption, occupation_test, test,
+                                                         test_labels,
+                                                         age_test)
+
 
 def corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
                               corruption_fraction, debug, education_test, feature, featurized_test, hours_per_week_test,
@@ -229,6 +252,37 @@ def corrupt_workclass_test_set_only(workclass_featurizer, workclass_test_all_cor
     print_if_debug_and_store_iteration_results(True, False, corruption_fraction, debug, feature, iteration_results,
                                                scores)
     return workclass_test_w_corrupt_fraction
+
+
+def corrupt_education_test_set_only(education_featurizer, _, capital_gain_test,
+                                    capital_loss_test,
+                                    corruption_fraction, debug, workclass_test, feature, featurized_test,
+                                    hours_per_week_test,
+                                    iteration_results, model_wo_corruption, occupation_test, test, test_labels,
+                                    age_test):
+    education_test = test[[feature]]
+    if debug is True:
+        print("____")
+        print(f"Now testing corruption of {corruption_fraction * 100}% of feature {feature}")
+        print("Corruptions in Test")
+    education_test_w_corrupt_fraction = education_test.copy()
+    indexes_to_corrupt = numpy.random.permutation(education_test.index)[
+                         :int(len(education_test) * corruption_fraction)]
+    education_test_w_corrupt_fraction.loc[indexes_to_corrupt, feature] = None
+    education_test_featurized_w_corrupt_fraction = education_featurizer.transform(
+        education_test_w_corrupt_fraction)
+    test_education_w_corrupt_fraction = numpy.hstack([workclass_test, education_test_featurized_w_corrupt_fraction,
+                                                      occupation_test, age_test,
+                                                      capital_gain_test, capital_loss_test, hours_per_week_test])
+    # numpy.testing.assert_allclose(featurized_test, test_education_w_corrupt_fraction, rtol=1e-5, atol=0)
+    test_predict = model_wo_corruption.predict(test_education_w_corrupt_fraction)
+    scores = {}
+    scores['accuracy'] = accuracy_score(test_labels, test_predict)
+    scores['non_protected_fnr'], scores['protected_fnr'] = compute_fairness_metric("race", "White", test, test_labels,
+                                                                                   test_predict)
+    print_if_debug_and_store_iteration_results(True, False, corruption_fraction, debug, feature, iteration_results,
+                                               scores)
+    return education_test_w_corrupt_fraction
 
 
 def print_if_debug_and_store_iteration_results(test_corruption, train_corruption, corruption_fraction, debug, feature,
