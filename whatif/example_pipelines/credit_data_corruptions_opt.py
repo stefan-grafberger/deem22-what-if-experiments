@@ -1,3 +1,6 @@
+import timeit
+from inspect import cleandoc
+
 import numpy
 import pandas as pd
 import numpy as np
@@ -7,7 +10,6 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, FunctionTransformer, OneHotEncoder, label_binarize
-from sklearn.compose import ColumnTransformer
 
 from whatif.example_pipelines.credit_data_corruptions_naive import compute_fairness_metric
 from whatif.utils.utils import get_project_root
@@ -251,6 +253,8 @@ def execute_credit_pipeline_opt(debug):
                                      occupation_test, occupation_train, test, test_labels, train, train_labels,
                                      workclass_test, workclass_train)
 
+    return iteration_results
+
 
 def corrupt_education_train_and_test(age_test, age_train, capital_gain_test, capital_gain_train, capital_loss_test,
                                      capital_loss_train, corruption_fraction, debug, education_test_c02, feature,
@@ -475,4 +479,18 @@ def do_credit_corruption_opt(debug):
     return pd.DataFrame(iteration_results)
 
 
-do_credit_corruption_opt(debug=True)
+def measure_credit_corruption_opt_exec_time(debug, repeats=10):
+    result = timeit.repeat(stmt=cleandoc(f"""
+    execute_credit_pipeline_opt({debug})
+    print("Done!")
+    """),
+                           setup=cleandoc(f"""
+    from whatif.example_pipelines.credit_data_corruptions_opt import execute_credit_pipeline_opt
+    """),
+                           repeat=repeats, number=1)
+    return pd.DataFrame({"runtimes": result})
+
+
+# do_credit_corruption_opt(debug=True)
+
+# measure_credit_corruption_opt_exec_time(debug=True, repeats=2)
