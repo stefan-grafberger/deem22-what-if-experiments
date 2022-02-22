@@ -135,7 +135,7 @@ def execute_credit_pipeline_opt(debug):
                                              0.5, debug, education_test, feature, featurized_test, hours_per_week_test,
                                              iteration_results, model_wo_corruption, occupation_test, test, test_labels,
                                              workclass_test)
-    age_test_c05 = corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
+    age_test_c09 = corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
                                              0.9, debug, education_test, feature, featurized_test, hours_per_week_test,
                                              iteration_results, model_wo_corruption, occupation_test, test, test_labels,
                                              workclass_test)
@@ -190,6 +190,62 @@ def execute_credit_pipeline_opt(debug):
                                                          iteration_results, model_wo_corruption, occupation_test, test,
                                                          test_labels,
                                                          age_test)
+    feature = "age"
+    age_train_all_corrupt = train[['age']].copy()
+    scale_factor = numpy.random.choice([10, 100, 1000])
+    age_train_all_corrupt.loc[:, 'age'] *= scale_factor
+
+    corrupt_age_train_and_test(age_test_c02, capital_gain_test, capital_gain_train, capital_loss_test,
+                               capital_loss_train,  0.2, debug, education_test, education_train, feature,
+                               featurized_train, get_num_featurizer, hours_per_week_test, hours_per_week_train,
+                               iteration_results, occupation_test, occupation_train, test, test_labels, train,
+                               train_labels, workclass_test, workclass_train)
+    corrupt_age_train_and_test(age_test_c05, capital_gain_test, capital_gain_train, capital_loss_test,
+                               capital_loss_train, 0.5, debug, education_test, education_train, feature,
+                               featurized_train, get_num_featurizer, hours_per_week_test, hours_per_week_train,
+                               iteration_results, occupation_test, occupation_train, test, test_labels, train,
+                               train_labels, workclass_test, workclass_train)
+    corrupt_age_train_and_test(age_test_c09, capital_gain_test, capital_gain_train, capital_loss_test,
+                               capital_loss_train, 0.9, debug, education_test, education_train, feature,
+                               featurized_train, get_num_featurizer, hours_per_week_test, hours_per_week_train,
+                               iteration_results, occupation_test, occupation_train, test, test_labels, train,
+                               train_labels, workclass_test, workclass_train)
+
+
+def corrupt_age_train_and_test(age_test_c02, capital_gain_test, capital_gain_train, capital_loss_test,
+                               capital_loss_train, corruption_fraction, debug, education_test, education_train, feature,
+                               featurized_train, get_num_featurizer, hours_per_week_test, hours_per_week_train,
+                               iteration_results, occupation_test, occupation_train, test, test_labels, train,
+                               train_labels, workclass_test, workclass_train):
+    age_train_unfeaturized = train[[feature]]
+    if debug is True:
+        print("____")
+        print(f"Now testing corruption of {corruption_fraction * 100}% of feature {feature}")
+        print("Corruptions in Train and Test")
+    age_train_w_corrupt_fraction = age_train_unfeaturized.copy()
+    indexes_to_corrupt = numpy.random.permutation(age_train_unfeaturized.index)[
+                         :int(len(age_train_unfeaturized) * corruption_fraction)]
+    age_train_w_corrupt_fraction.loc[indexes_to_corrupt, feature] = age_train_w_corrupt_fraction.loc[
+        indexes_to_corrupt, feature]
+    age_c02_featurizer = get_num_featurizer()
+    age_train_featurized_w_corrupt_fraction = age_c02_featurizer.fit_transform(
+        age_train_w_corrupt_fraction)
+    train_age_w_corrupt_fraction = numpy.hstack([workclass_train, education_train, occupation_train,
+                                                 age_train_featurized_w_corrupt_fraction,
+                                                 capital_gain_train, capital_loss_train, hours_per_week_train])
+    numpy.testing.assert_allclose(featurized_train, train_age_w_corrupt_fraction, rtol=1e-5, atol=0)
+    model_age_c02 = SGDClassifier(loss='log')
+    model_age_c02.fit(train_age_w_corrupt_fraction, train_labels)
+    featurized_age_c02_test = age_c02_featurizer.transform(age_test_c02)
+    featurized_test_w_age_c02 = numpy.hstack([workclass_test, education_test, occupation_test, featurized_age_c02_test,
+                                              capital_gain_test, capital_loss_test, hours_per_week_test])
+    test_predict_w_age_c02 = model_age_c02.predict(featurized_test_w_age_c02)
+    scores = {}
+    scores['accuracy'] = accuracy_score(test_labels, test_predict_w_age_c02)
+    scores['non_protected_fnr'], scores['protected_fnr'] = compute_fairness_metric("race", "White", test, test_labels,
+                                                                                   test_predict_w_age_c02)
+    print_if_debug_and_store_iteration_results(True, True, corruption_fraction, debug, feature, iteration_results,
+                                               scores)
 
 
 def corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
