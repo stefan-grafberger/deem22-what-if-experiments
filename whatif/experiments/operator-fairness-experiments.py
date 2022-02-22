@@ -1,6 +1,0 @@
-from whatif.example_pipelines.credit import execute_credit_pipeline
-from whatif.example_pipelines.helpful_reviews import execute_review_pipeline
-
-execute_review_pipeline()
-
-execute_credit_pipeline()
