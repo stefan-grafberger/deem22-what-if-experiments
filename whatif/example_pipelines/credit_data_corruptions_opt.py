@@ -23,6 +23,7 @@ def execute_credit_pipeline_opt(debug):
         "non_protected_fnr": [],
         "protected_fnr": []
     }
+
     def load_train_and_test_data(adult_train_location, adult_test_location, excluded_employment_types):
 
         columns = ['age', 'workclass', 'fnlwgt', 'education', 'education-num', 'marital-status', 'occupation',
@@ -30,7 +31,8 @@ def execute_credit_pipeline_opt(debug):
                    'native-country', 'income-per-year']
 
         adult_train = pd.read_csv(adult_train_location, names=columns, sep=', ', engine='python', na_values="?")
-        adult_test = pd.read_csv(adult_test_location, names=columns, sep=', ', engine='python', na_values="?", skiprows=1)
+        adult_test = pd.read_csv(adult_test_location, names=columns, sep=', ', engine='python', na_values="?",
+                                 skiprows=1)
 
         for employment_type in excluded_employment_types:
             adult_train = adult_train[adult_train['workclass'] != employment_type]
@@ -38,14 +40,12 @@ def execute_credit_pipeline_opt(debug):
 
         return adult_train, adult_test
 
-
     def extract_labels(adult_train, adult_test):
         adult_train_labels = label_binarize(adult_train['income-per-year'], classes=['<=50K', '>50K']).ravel()
         # The test data has a dot in the class names for some reason...
         adult_test_labels = label_binarize(adult_test['income-per-year'], classes=['<=50K.', '>50K.'])
 
         return adult_train_labels, adult_test_labels
-
 
     def safe_log(x):
         return np.log(x, out=np.zeros_like(x), where=(x != 0))
@@ -57,19 +57,21 @@ def execute_credit_pipeline_opt(debug):
 
     train, test = load_train_and_test_data(train_location, test_location, excluded_employment_types=government_employed)
 
-
     train_labels, test_labels = extract_labels(train, test)
+
     def get_cat_featurizer():
         return Pipeline([
             ('impute', SimpleImputer(strategy='most_frequent')),
             ('encode', OneHotEncoder(sparse=False, handle_unknown='ignore'))
         ])
+
     def get_num_featurizer():
         return Pipeline([
             ('impute', SimpleImputer(strategy='mean')),
             ('log_transform', FunctionTransformer(lambda x: safe_log(x))),
             ('scale', StandardScaler())
         ])
+
     workclass_featurizater = get_cat_featurizer()
     education_featurizater = get_cat_featurizer()
     occupation_featurizer = get_cat_featurizer()
@@ -102,7 +104,7 @@ def execute_credit_pipeline_opt(debug):
     hours_per_week_test = hours_per_week_featurizer.transform(test[['hours-per-week']])
 
     featurized_test = numpy.hstack([workclass_test, education_test, occupation_test, age_featurizer_test,
-                                     capital_gain_test, capital_loss_test, hours_per_week_test])
+                                    capital_gain_test, capital_loss_test, hours_per_week_test])
     test_predict = model_wo_corruption.predict(featurized_test)
     scores = {}
     scores['accuracy'] = accuracy_score(test_labels, test_predict)
@@ -126,7 +128,24 @@ def execute_credit_pipeline_opt(debug):
     scale_factor = numpy.random.choice([10, 100, 1000])
     age_test_all_corrupt.loc[:, 'age'] *= scale_factor
 
-    corruption_fraction = 0.2
+    age_test_c02 = corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
+                                             0.2, debug, education_test, feature, featurized_test, hours_per_week_test,
+                                             iteration_results, model_wo_corruption, occupation_test, test, test_labels,
+                                             workclass_test)
+    age_test_c05 = corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
+                                             0.5, debug, education_test, feature, featurized_test, hours_per_week_test,
+                                             iteration_results, model_wo_corruption, occupation_test, test, test_labels,
+                                             workclass_test)
+    age_test_c05 = corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
+                                             0.9, debug, education_test, feature, featurized_test, hours_per_week_test,
+                                             iteration_results, model_wo_corruption, occupation_test, test, test_labels,
+                                             workclass_test)
+
+
+def corrupt_age_test_set_only(age_featurizer, age_test_all_corrupt, capital_gain_test, capital_loss_test,
+                              corruption_fraction, debug, education_test, feature, featurized_test, hours_per_week_test,
+                              iteration_results, model_wo_corruption, occupation_test, test, test_labels,
+                              workclass_test):
     age_test = test[['age']]
     if debug is True:
         print("____")
@@ -139,18 +158,33 @@ def execute_credit_pipeline_opt(debug):
         indexes_to_corrupt, feature]
     age_test_featurized_w_corrupt_fraction = age_featurizer.transform(
         age_test_w_corrupt_fraction)
-    test_age_w_corrupt_fraction = numpy.hstack(
-        [star_rating_test_featurized_w_corrupt_fraction, vine_test_featurized,
-         verified_purchase_test_featurized,
-         category_id_test_featurized, title_and_review_text_test_featurized])
-    # This should fail
-    # numpy.testing.assert_allclose(test_wo_corruptions, test_star_rating_w_corrupt_fraction, rtol=1e-5, atol=0)
-    test_predict_star_rating_corrupt_fraction = model_wo_corruptions.predict(test_star_rating_w_corrupt_fraction)
+    test_age_w_corrupt_fraction = numpy.hstack([workclass_test, education_test, occupation_test,
+                                                age_test_featurized_w_corrupt_fraction,
+                                                capital_gain_test, capital_loss_test, hours_per_week_test])
+    # numpy.testing.assert_allclose(featurized_test, test_age_w_corrupt_fraction, rtol=1e-5, atol=0)
+    test_predict = model_wo_corruption.predict(test_age_w_corrupt_fraction)
     scores = {}
-    scores['roc_auc'] = roc_auc_score(test_predict_star_rating_corrupt_fraction, test_labels)
-    scores['f1'] = f1_score(test_predict_star_rating_corrupt_fraction, test_labels, average='macro')
-    print_if_debug_and_append_iteration_results(debug, iteration_results, scores, True, False,
-                                                corruption_fraction, feature)
+    scores['accuracy'] = accuracy_score(test_labels, test_predict)
+    scores['non_protected_fnr'], scores['protected_fnr'] = compute_fairness_metric("race", "White", test, test_labels,
+                                                                                   test_predict)
+    print_if_debug_and_store_iteration_results(True, False, corruption_fraction, debug, feature, iteration_results,
+                                               scores)
+    return age_test_w_corrupt_fraction
+
+
+def print_if_debug_and_store_iteration_results(test_corruption, train_corruption, corruption_fraction, debug, feature,
+                                               iteration_results, scores):
+    if debug is True:
+        print(f'Accuracy on the test set: {scores["accuracy"]}')
+        print(f'non_protected_fnr on the test set: {scores["non_protected_fnr"]}')
+        print(f'protected_fnr on the test set: {scores["protected_fnr"]}')
+    iteration_results["test_corruption"].append(test_corruption)
+    iteration_results["train_corruption"].append(train_corruption)
+    iteration_results["corruption_fraction"].append(corruption_fraction)
+    iteration_results["feature"].append(feature)
+    iteration_results["accuracy"].append(scores["accuracy"])
+    iteration_results["non_protected_fnr"].append(scores["non_protected_fnr"])
+    iteration_results["protected_fnr"].append(scores["protected_fnr"])
 
 
 def do_credit_corruption_opt(debug):
