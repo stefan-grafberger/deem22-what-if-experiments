@@ -27,14 +27,14 @@ def execute_credit_pipeline_naive(corrupt_train, corrupt_test, corruption_fracti
         adult_test = pd.read_csv(adult_test_location, names=columns, sep=', ', engine='python', na_values="?",
                                  skiprows=1)
 
+        for employment_type in excluded_employment_types:
+            adult_train = adult_train[adult_train['workclass'] != employment_type]
+            adult_test = adult_test[adult_test['workclass'] != employment_type]
+
         if corrupt_train is True:
             adult_train = corrupt_data(adult_train, corruption_fraction, corrupt_feature)
         if corrupt_test is True:
             adult_test = corrupt_data(adult_test, corruption_fraction, corrupt_feature)
-
-        for employment_type in excluded_employment_types:
-            adult_train = adult_train[adult_train['workclass'] != employment_type]
-            adult_test = adult_test[adult_test['workclass'] != employment_type]
 
         return adult_train, adult_test
 
