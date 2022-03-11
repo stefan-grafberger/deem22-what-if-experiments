@@ -208,6 +208,7 @@ def create_corrupt_data(corruption_fraction=0.5):
     with_categories = train_data.merge(product_categories, on='category_id')
     categories_to_distinguish = ['Sneaker', 'Ankle boot']
     images_of_interest = with_categories[with_categories['category_name'].isin(categories_to_distinguish)]
+    print(f"Number of train samples: {len(images_of_interest)}")
     rows_to_corrupt = images_of_interest.sample(frac=corruption_fraction, replace=False)
     rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Sneaker', 'category_id'] = 9
     rows_to_corrupt.loc[rows_to_corrupt['category_name'] == 'Ankle boot', 'category_id'] = 7
@@ -324,3 +325,5 @@ def measure_shapley_naive_exec_time(corruption_fraction, num_iterations, use_sha
     """),
                            repeat=repeats, number=1)
     return pd.DataFrame({"runtimes": result})
+
+# create_corrupt_data(0.5)

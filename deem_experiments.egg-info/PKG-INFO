@@ -1,0 +1,18 @@
+Metadata-Version: 2.1
+Name: deem-experiments
+Version: 0.0.1.dev0
+Summary: UNKNOWN
+Home-page: UNKNOWN
+Author: Stefan Grafberger
+Author-email: s[DOT]grafberger[AT]uva[DOT]nl
+License: GNU General Public License v3 (GPLv3)
+Platform: UNKNOWN
+Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.9
+Requires-Python: ==3.9.*
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+UNKNOWN
+
