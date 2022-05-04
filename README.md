@@ -1,7 +1,7 @@
 
 ## DEEM: What-if Experiments
 
-This repository contains some experiments for the DEEM paper we submitted.
+This repository contains the source code for the experiments for our [DEEM](http://deem-workshop.org/) workshop paper [Towards Data-Centric What-If Analysis for Native Machine Learning Pipelines](https://stefan-grafberger.com/mlwhatif-deem.pdf).
 
 
 ## Local setup
